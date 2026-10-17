@@ -9,6 +9,7 @@ RKMusic_Ledger の収集スクリプト。cron-job.org が毎時0分に GitHub A
     catalog.json                全動画の台帳（タレント・タイトル・公開日・長さ・種別・確定したか）とチャンネルの情報
     daily/YYYY/YYYY-MM-DD.json  0時の全件。全動画の [再生数, 高評価数, コメント数] とチャンネルの登録者数など
     hourly/YYYY-MM-DD/HH.json   毎時。前の回から再生数が変わった動画の再生数と、登録者数
+    summary/daily_totals.json   RK全体の日ごとの合計（総再生数・種別ごとに増えた再生数）。0時の回と予備の実行で入れ直す小さい台帳
 時刻はすべて日本時間。
 
 回の種類（--mode）:
@@ -62,6 +63,8 @@ BASE_LOOKBACK_DAYS = 14  # 土台にする daily を探しに戻る日数
 CHANNELS_FILE = 'channels.json'
 FLAGS_FILE = 'flags.json'
 CATALOG_FILE = 'catalog.json'
+TOTALS_FILE = 'summary/daily_totals.json'
+TYPES = ('Movie', 'Short', 'LiveArchive')
 TAB_PLAYLISTS = (('UULF', 'Movie'), ('UUSH', 'Short'), ('UULV', 'LiveArchive'))
 
 # この実行で取り切れなかった分・解消した分。最後に通知に使う
@@ -648,6 +651,45 @@ def fill_missing_days(prev, today):
     return made
 
 
+def day_totals(data, prev, catalog, flags):
+    """
+    その日の RK 全体の合計。(全チャンネルの総再生数の合計, 種別ごとに増えた再生数)。
+    増えた再生数は、前の日にもある動画の、増えた分だけを足す（サイトの Analytics と同じ数え方）。前の日が無ければ None
+    """
+    total = sum(ch.get('総再生数', 0) for ch in data['channels'].values())
+    if prev is None:
+        return total, {t: None for t in TYPES}
+    inc = {t: 0 for t in TYPES}
+    for vid, x in data['v'].items():
+        p = prev['v'].get(vid)
+        c = catalog['videos'].get(vid)
+        if p is None or c is None or x[0] <= p[0]:
+            continue
+        t = flags.get(c['タレント'], {}).get(vid, c['type'])
+        if t in inc:
+            inc[t] += x[0] - p[0]
+    return total, inc
+
+
+def update_totals(days, catalog, flags):
+    """
+    summary/daily_totals.json（サイトの「RK全体の再生数」のグラフが読む、日ごとの合計）の、指定した日の分を入れ直す。
+    1日ぶんは数十バイトの小さいファイルなので、書き換えてよい台帳として扱う
+    """
+    totals = read_json(TOTALS_FILE, None)
+    if not totals:
+        print(f'⚠️  {TOTALS_FILE} がありません。今回の日の分だけで作ります')
+        totals = {'dates': [], 'total': [], 'inc': {t: [] for t in TYPES}}
+    rows = {d: (totals['total'][i], {t: totals['inc'][t][i] for t in TYPES}) for i, d in enumerate(totals['dates'])}
+    for d in sorted(set(days)):
+        data = read_json(daily_path(d))
+        if data:
+            rows[d] = day_totals(data, read_json(daily_path(shift_day(d, -1))), catalog, flags)
+    dates = sorted(rows)
+    write_json(TOTALS_FILE, {'dates': dates, 'total': [rows[d][0] for d in dates],
+                             'inc': {t: [rows[d][1][t] for d in dates] for t in TYPES}})
+
+
 def run_daily(now, fill=False):
     """0時の全件（fill=True のときは、今日の daily が無かったときの予備の実行）"""
     today = now.strftime('%Y-%m-%d')
@@ -676,10 +718,11 @@ def run_daily(now, fill=False):
         if name in results:
             changed |= update_catalog(catalog, name, channel_info(items[name]) if name in items else None, results[name], today)
 
-    fill_missing_days(prev, today)
+    made = fill_missing_days(prev, today)
     write_json(daily_path(today), daily)
     if changed:
         write_json(CATALOG_FILE, catalog)
+    update_totals(made + [today], catalog, flags)
     if not fill and not exists(hourly_path(today, 0)):
         filled = set(daily.get(FILL_MARK, []))
         write_json(hourly_path(today, 0), {
@@ -763,6 +806,7 @@ def run_fill(now):
     write_json(daily_path(today), daily)
     if changed:
         write_json(CATALOG_FILE, catalog)
+    update_totals([today], catalog, flags)
 
 # ----------------------------------------------------------------
 # 毎時の回

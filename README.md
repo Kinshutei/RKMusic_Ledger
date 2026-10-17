@@ -12,8 +12,18 @@ RK Music の全シンガーの YouTube の数字（再生数・高評価数・�
 | `catalog.json` | 全動画の台帳とチャンネルの情報 | 新着・種別の確定・タイトルの変更があった日だけ書き直す |
 | `daily/YYYY/YYYY-MM-DD.json` | 0時の全件 | 書き換えない（当日の取り直しだけ書き直す） |
 | `hourly/YYYY-MM-DD/HH.json` | 毎時の再生数 | 書き換えない |
+| `summary/daily_totals.json` | RK全体の日ごとの合計（サイトの「RK全体の再生数」のグラフが読む） | 0時の回と予備の実行で、その日の分を入れ直す（小さい台帳） |
 
 時刻はすべて日本時間。
+
+### summary/daily_totals.json
+
+```
+{"dates": [日付], "total": [その日の全チャンネルの総再生数の合計], "inc": {"Movie"|"Short"|"LiveArchive": [その日に増えた再生数]}}
+```
+
+- `inc` は、前の日にもある動画の、増えた分だけを足したもの（サイトの Analytics と同じ数え方）。その日に初めて記録された動画は入らない。最初の日は null
+- 種別は、計算したときの台帳と例外設定による
 
 ### catalog.json
 
