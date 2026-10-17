@@ -367,7 +367,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .singer-panel { position: fixed; top: var(--header-h); left: 8px; right: 8px; width: auto; }
   .page { padding: 16px 10px 40px 20px; }
   .singer-name { font-size: 22px; }
-  .stat { min-width: 0; flex: 1 1 140px; }
+  /* 値と前日比を横に並べると桁の大きいシンガーでタイルに入りきらないので、前日比を値の下の行に回す */
+  .stat { min-width: 0; flex: 1 1 140px; grid-template-columns: minmax(0, 1fr); align-content: start; }
   .cards { grid-template-columns: 1fr; }
   .rank-cards { grid-template-columns: 1fr; }
   .date-input { min-width: 0; }
