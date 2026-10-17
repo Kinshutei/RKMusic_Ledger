@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { fmtIncrease, niceScale } from '../format'
+import { fmtIncrease, niceScale, trendNote, trendOf } from '../format'
+
+const TREND_ARROW = { up: '↗', down: '↘', flat: '→' } as const
 
 /** 置かれた枠の大きさ（幅と高さ）に合わせて描き直す */
 function useSize() {
@@ -19,7 +21,8 @@ function useSize() {
 
 /**
  * カードの棒グラフ。1日ごとの増加を、古い日から順に今日の分まで（最大15日）。
- * 棒の上に増えた数（1,000以上は K、100万以上は M）、下に日。枠の高さいっぱいに描く
+ * 棒の上に増えた数（1,000以上は K、100万以上は M）、下に日。枠の高さいっぱいに描く。
+ * 見出しの右隣に、伸びの勢いの矢印（↗ 上向き・↘ 下向き・→ 横ばい）
  */
 export default function IncreaseBars({ label, kind, daily, dates }: {
   label: string
@@ -44,10 +47,14 @@ export default function IncreaseBars({ label, kind, daily, dates }: {
   const range = niceMax - niceMin || 1
   const sy = (v: number) => PAD.top + plotH - ((v - niceMin) / range) * plotH
   const zeroY = sy(0)
+  const trend = trendOf(daily)
 
   return (
     <div className={`increase ${kind}`}>
-      <div className="increase-label"><i />{label}</div>
+      <div className="increase-label">
+        <i />{label}
+        {trend && <span className={`trend ${trend.dir}`} title={trendNote(trend)} aria-label={trendNote(trend)}>{TREND_ARROW[trend.dir]}</span>}
+      </div>
       <div ref={ref} className="increase-bars">
         {count < 2 ? <p className="increase-empty">記録がたまると表示されます</p> : (
           <svg width={PAD.left + PAD.right + count * slot} height={PAD.top + plotH + PAD.bottom}>

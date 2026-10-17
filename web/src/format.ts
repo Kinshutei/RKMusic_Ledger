@@ -23,6 +23,37 @@ export function fmtIncrease(v: number): string {
   return (v > 0 ? '+' : v < 0 ? '-' : '') + body
 }
 
+export interface Trend {
+  dir: 'up' | 'down' | 'flat'
+  days: number     // 比べた日数（直近 days 日と、その前の days 日）
+  recent: number   // 直近の平均
+  prev: number     // その前の平均
+}
+
+/**
+ * 1日の伸びの勢い（トレンド）。直近7日の増加の平均と、その前の7日の平均を比べる。
+ * 差がその前の平均の ±10% 以内なら横ばい（両方0も横ばい）。記録が14日分に満たないときは、ある日数を半分ずつに分けて比べ、
+ * 2日分未満なら出さない。daily は新しい順（[0] が今日の分）
+ */
+export function trendOf(daily: (number | null)[]): Trend | null {
+  const n = daily.findIndex(v => v === null)
+  const vals = (n === -1 ? daily : daily.slice(0, n)) as number[]
+  const days = Math.min(7, Math.floor(vals.length / 2))
+  if (days < 1) return null
+  const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
+  const recent = avg(vals.slice(0, days)), prev = avg(vals.slice(days, days * 2))
+  const diff = recent - prev
+  const dir = Math.abs(diff) <= Math.abs(prev) * 0.1 ? 'flat' : diff > 0 ? 'up' : 'down'
+  return { dir, days, recent, prev }
+}
+
+/** 矢印に添える説明。「直近7日 平均52 / その前の7日 平均41（+27%）」 */
+export function trendNote(t: Trend): string {
+  const f = (v: number) => (Math.abs(v) < 10 ? v.toFixed(1) : Math.round(v).toLocaleString())
+  const pct = t.prev !== 0 ? `${t.recent >= t.prev ? '+' : ''}${Math.round((t.recent - t.prev) / Math.abs(t.prev) * 100)}%` : '—'
+  return `直近${t.days}日 平均${f(t.recent)} / その前の${t.days}日 平均${f(t.prev)}（${pct}）`
+}
+
 export function niceScale(dataMin: number, dataMax: number, targetTicks = 4) {
   const minV = Math.min(dataMin, 0)
   const maxV = Math.max(dataMax, 0)

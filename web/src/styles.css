@@ -203,6 +203,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .increase { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: #f8fafc; border-radius: 12px; padding: 8px 10px 4px; }
 .increase-label { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .02em; }
 .increase-label i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+/* 伸びの勢いの矢印: ↗ 上向き（緑）・↘ 下向き（赤）・→ 横ばい（灰） */
+.trend { margin-left: 2px; font-size: 14px; font-weight: 700; line-height: 1; cursor: help; }
+.trend.up { color: var(--up); }
+.trend.down { color: var(--down); }
+.trend.flat { color: var(--muted); }
 .increase.views .increase-label i { background: var(--views); }
 .increase.likes .increase-label i { background: var(--likes); }
 .increase-bars { flex: 1; min-height: 0; overflow: hidden; }
