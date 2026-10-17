@@ -136,11 +136,31 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .breakdown { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }
 
 /* タブと並べ替えは角の丸い切り替えボタン */
+/* タブの行。PC はタブの右隣に検索欄、スマホはタブの下の行に検索欄 */
+.tab-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin-bottom: 14px; }
 .type-tabs {
-  display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 14px; max-width: 100%;
+  display: inline-flex; gap: 4px; padding: 4px; max-width: 100%;
   background: #e8ecf4; border-radius: 12px;
   overflow-x: auto; scrollbar-width: none;
 }
+.search-wrap { display: flex; align-items: center; gap: 10px; }
+.search {
+  display: flex; align-items: center; gap: 8px;
+  width: 280px; height: 38px; padding: 0 10px 0 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; color: var(--muted);
+  transition: border-color .15s, box-shadow .15s;
+}
+.search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); color: var(--accent); }
+.search input { flex: 1; min-width: 0; border: none; outline: none; background: none; font: inherit; font-size: 13px; color: var(--ink); }
+.search input::placeholder { color: #94a3b8; }
+.search.disabled { background: #f1f5f9; }
+.search.disabled input { cursor: not-allowed; }
+.search-clear {
+  flex: none; width: 22px; height: 22px; border: none; border-radius: 999px;
+  background: #e2e8f0; color: var(--muted); font-size: 14px; line-height: 1; padding: 0;
+}
+.search-clear:hover { background: #cbd5e1; color: var(--ink); }
+.search-count { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .type-tabs::-webkit-scrollbar { display: none; }
 .type-tab {
   border: none; background: none; padding: 7px 14px; border-radius: 9px;
@@ -251,4 +271,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .singer-name { font-size: 22px; }
   .stat { min-width: 0; flex: 1 1 140px; }
   .cards { grid-template-columns: 1fr; }
+  /* タブは画面の幅に4つ並べ、名前と本数を2行にして幅を節約する。検索欄はその下の行に幅いっぱい */
+  .tab-row { flex-direction: column; align-items: stretch; }
+  .type-tabs { display: flex; width: 100%; }
+  .type-tab { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; }
+  .tab-name { font-size: 12px; }
+  .tab-count { margin-left: 0; }
+  .search-wrap { width: 100%; }
+  .search { flex: 1; width: auto; }
 }

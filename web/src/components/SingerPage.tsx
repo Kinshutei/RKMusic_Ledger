@@ -19,6 +19,9 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 const TAB_LABEL: Record<VideoType, string> = { Movie: '動画', Short: 'ショート', LiveArchive: 'ライブ' }
 type Tab = VideoType | 'Analytics'
 
+/** 検索で比べる形。全角・半角、大文字・小文字の違いをなくす */
+const norm = (s: string) => s.normalize('NFKC').toLowerCase()
+
 interface Loaded { catalog: Catalog; flags: Flags; dailies: Daily[] }
 
 /** シンガー名の横の小さなタイル。ラベル・数字・前日比 */
@@ -39,6 +42,7 @@ export default function SingerPage({ name }: { name: string }) {
   const [attempt, setAttempt] = useState(0)
   const [tab, setTab] = useState<Tab | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('再生数')
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     setError(null)
@@ -65,7 +69,10 @@ export default function SingerPage({ name }: { name: string }) {
 
   const tabs: Tab[] = [...VIDEO_TYPES.filter(t => byType[t].length > 0), 'Analytics']
   const active: Tab = tab && tabs.includes(tab) ? tab : tabs[0]
-  const sorted = active === 'Analytics' ? [] : [...byType[active]].sort((a, b) => b[sortKey] - a[sortKey])
+  const searching = active !== 'Analytics' && query.trim() !== ''
+  const q = norm(query.trim())
+  const shown = active === 'Analytics' ? [] : searching ? byType[active].filter(v => norm(v.タイトル).includes(q)) : byType[active]
+  const sorted = [...shown].sort((a, b) => b[sortKey] - a[sortKey])
 
   return (
     <>
@@ -81,15 +88,28 @@ export default function SingerPage({ name }: { name: string }) {
         </div>
       </section>
 
-      <nav className="type-tabs">
-        {tabs.map(t => (
-          <button key={t} className={`type-tab${active === t ? ' active' : ''}`}
-            onClick={() => { setTab(t); setSortKey('再生数') }}>
-            {t === 'Analytics' ? 'Analytics' : TAB_LABEL[t]}
-            {t !== 'Analytics' && <span className="tab-count">{byType[t].length}</span>}
-          </button>
-        ))}
-      </nav>
+      <div className="tab-row">
+        <nav className="type-tabs">
+          {tabs.map(t => (
+            <button key={t} className={`type-tab${active === t ? ' active' : ''}`}
+              onClick={() => { setTab(t); setSortKey('再生数') }}>
+              <span className="tab-name">{t === 'Analytics' ? 'Analytics' : TAB_LABEL[t]}</span>
+              {t !== 'Analytics' && <span className="tab-count">{byType[t].length}</span>}
+            </button>
+          ))}
+        </nav>
+        {/* 今開いているタブの中を、コンテンツ名で絞り込む。Analytics を開いているときは使えない */}
+        <div className="search-wrap">
+          <label className={`search${active === 'Analytics' ? ' disabled' : ''}`}>
+            <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M13 13l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+            <input type="text" inputMode="search" enterKeyHint="search" value={query} disabled={active === 'Analytics'}
+              placeholder={active === 'Analytics' ? '動画・ショート・ライブで使えます' : 'タイトルで検索'}
+              onChange={e => setQuery(e.target.value)} aria-label="タイトルで検索" />
+            {searching && <button type="button" className="search-clear" aria-label="消す" onClick={() => setQuery('')}>×</button>}
+          </label>
+          {searching && <span className="search-count">{sorted.length.toLocaleString()}件</span>}
+        </div>
+      </div>
 
       {active === 'Analytics' ? (
         <Analytics name={name} catalog={data.catalog} flags={data.flags} dailies={data.dailies} />
