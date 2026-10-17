@@ -4,6 +4,7 @@ import {
   addDays, buildRanking, loadCatalog, loadChannels, loadDailies, loadRecentDailies, rankingDates, talentFirstDates,
 } from '../ledger'
 import { diffColor, fmtDiffRate } from '../format'
+import TrendChart from './TrendChart'
 
 // グループの分け方（旧サイトのツリーマップと同じ）
 const GROUPS: { label: string; members: string[] }[] = [
@@ -170,6 +171,7 @@ export default function Dashboard() {
         </div>
       )}
       <hr className="dash-rule" />
+      <TrendChart />
     </div>
   )
 }
