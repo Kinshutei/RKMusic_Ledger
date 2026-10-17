@@ -92,7 +92,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .singer-btn:hover { background: rgba(255, 255, 255, .1); }
 .singer-btn.open, .singer-btn.active { border-color: rgba(129, 140, 248, .7); }
-.singer-btn span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.singer-btn span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .singer-btn .caret { color: var(--header-muted); transition: transform .2s; }
 .singer-btn.open .caret { transform: rotate(180deg); }
 /* 一覧は開くときに縦に伸びる（アコーディオン）。閉じているときは枠線も影も出さず、押せないようにする */
@@ -358,11 +358,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* ---------------------------------------------------------------- スマホ */
 @media (max-width: 640px) {
-  .header-inner { gap: 14px; }
+  .header-inner { gap: 12px; }
   .brand { font-size: 15px; gap: 8px; }
   .brand-mark { width: 18px; height: 18px; border-radius: 6px; }
-  .singer-select { position: static; }
-  .singer-btn { width: auto; max-width: 140px; }
+  /* ロゴと Dashboard の残りの幅に収める（長い名前は…で省く）。縮めないと画面の右へはみ出し、ページ全体が横にずれる */
+  .singer-select { position: static; min-width: 0; }
+  .singer-btn { width: 100%; max-width: 140px; }
   .singer-panel { position: fixed; top: var(--header-h); left: 8px; right: 8px; width: auto; }
   .page { padding: 16px 10px 40px 20px; }
   .singer-name { font-size: 22px; }
