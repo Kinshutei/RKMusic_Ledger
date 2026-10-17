@@ -126,6 +126,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   border: none; background: none; padding: 6px 16px; border-radius: 9px;
   font-size: 13px; font-weight: 600; color: var(--muted);
 }
+/* 年のボタン（投稿ペース）は数が多いので、狭い画面では折り返す */
+.seg.years { flex-wrap: wrap; max-width: 100%; }
+.seg.years button { white-space: nowrap; }
 .seg button.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, .12); }
 .date-pick { display: flex; align-items: center; gap: 6px; }
 .date-input {
@@ -159,11 +162,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* 4枚のカードの下の罫線（幅80%、中央寄せ） */
 .dash-rule { width: 80%; margin: 32px auto; border: 0; border-top: 1px solid #cbd5e1; }
 
-/* RK全体の再生数の推移 */
-.trend { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px 14px; }
-.trend-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
-.trend-head h2 { margin: 0; font-size: 16px; font-weight: 700; color: var(--ink); }
-.trend-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+/* グラフを載せる白い板（Dashboard の RK全体の再生数、シンガーの Analytics） */
+.panel { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px 14px; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.panel-head h2 { margin: 0; font-size: 16px; font-weight: 700; color: var(--ink); }
+.panel-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.panel-sub { font-size: 12px; color: var(--muted); }
+.panel-sub strong { color: var(--ink); font-weight: 700; }
+.panel-tools { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; max-width: 100%; }
+.panel-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); }
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
 .kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; background: #f8fafc; border-radius: 12px; min-width: 0; }
 .kpi span { font-size: 11px; font-weight: 600; color: var(--muted); }
@@ -171,21 +178,21 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .kpi strong.up { color: var(--up); }
 .kpi strong.down { color: var(--down); }
 .kpi small { font-size: 11px; color: var(--muted); }
-.trend-chart { position: relative; touch-action: pan-y; }
-.trend-chart svg { display: block; font-family: inherit; }
-.trend-chart .grid { stroke: #eef2f7; stroke-width: 1; }
-.trend-chart .tick { font-size: 10px; fill: var(--muted); }
-.trend-chart .daily-line { fill: none; stroke: #6366f1; stroke-width: 1.2; stroke-opacity: .55; }
-.trend-chart .ma-line { fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linejoin: round; }
-.trend-chart .cross { stroke: #94a3b8; stroke-width: 1; stroke-dasharray: 3 3; }
-.trend-chart .ma-dot { fill: var(--ink); stroke: #fff; stroke-width: 2; }
-.trend-chart .daily-dot { fill: #4f46e5; stroke: #fff; stroke-width: 2; }
-.trend-tip {
+.plot { position: relative; touch-action: pan-y; }
+.plot svg { display: block; font-family: inherit; }
+.plot .grid { stroke: #eef2f7; stroke-width: 1; }
+.plot .tick { font-size: 10px; fill: var(--muted); }
+.plot .daily-line { fill: none; stroke: #6366f1; stroke-width: 1.2; stroke-opacity: .55; }
+.plot .ma-line { fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linejoin: round; }
+.plot .cross { stroke: #94a3b8; stroke-width: 1; stroke-dasharray: 3 3; }
+.plot .ma-dot { fill: var(--ink); stroke: #fff; stroke-width: 2; }
+.plot .daily-dot { fill: #4f46e5; stroke: #fff; stroke-width: 2; }
+.plot-tip {
   position: absolute; top: 8px; transform: translateX(12px); pointer-events: none;
   background: rgba(15, 23, 42, .94); color: #f8fafc; border-radius: 10px; padding: 8px 12px; min-width: 150px;
   font-size: 12px; box-shadow: 0 8px 24px rgba(15, 23, 42, .25);
 }
-.trend-tip.left { transform: translateX(calc(-100% - 12px)); }
+.plot-tip.left { transform: translateX(calc(-100% - 12px)); }
 .tip-date { font-weight: 700; margin-bottom: 4px; }
 .tip-row { display: flex; justify-content: space-between; gap: 14px; }
 .tip-row span { color: #cbd5e1; display: inline-flex; align-items: center; gap: 5px; }
@@ -194,7 +201,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @media (max-width: 640px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kpi strong { font-size: 18px; }
-  .trend { padding: 14px 12px 10px; }
+  .panel { padding: 14px 12px 10px; }
 }
 
 /* シンガー名と、右隣の4つのタイル */
@@ -318,22 +325,36 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .increase-empty { margin: 0; padding-top: 8px; font-size: 12px; color: var(--muted); }
 
 /* ---------------------------------------------------------------- Analytics */
-.analytics h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 30px 0 10px; }
-.analytics h3:first-of-type { margin-top: 6px; }
-.note { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
-.year-select { margin-bottom: 10px; padding: 6px 10px; font: inherit; font-size: 13px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); }
-.chart { overflow-x: auto; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; }
-.chart svg { display: block; font-family: inherit; }
-.chart .grid { stroke: #eef2f7; stroke-width: 1; }
-.chart .axis { stroke: #94a3b8; stroke-width: 1; }
-.chart .tick { font-size: 10px; fill: var(--muted); }
-.chart .total { font-size: 9px; font-weight: 600; fill: var(--text); }
-.legend { display: flex; gap: 16px; margin-top: 6px; font-size: 12px; color: var(--muted); }
+.analytics { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: 12px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-.curve-legend { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 11px; }
-.curve-legend div { display: flex; align-items: center; gap: 6px; }
-.curve-legend i { width: 20px; height: 3px; border-radius: 2px; display: inline-block; flex: none; }
+/* 登録者数の階段の線 */
+.plot .subs-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.plot .subs-dot { fill: var(--accent); stroke: #fff; stroke-width: 2; }
+/* 積み上げ棒（月別の再生数・投稿ペース） */
+.plot .bar-total { font-size: 10px; font-weight: 600; fill: var(--text); }
+.plot .bar-hit { fill: transparent; }
+.plot .bar-hit.on { fill: rgba(79, 70, 229, .06); }
+.plot .axis { stroke: #cbd5e1; stroke-width: 1; }
+/* 初速カーブ: 全部を灰色で描き、選んだ1本だけ藍 */
+.plot .curve { fill: none; stroke: #cbd5e1; stroke-width: 1.5; stroke-linejoin: round; }
+.plot .curve.on { stroke: var(--accent); stroke-width: 2.5; }
+.plot .curve-dot { fill: var(--accent); stroke: #fff; stroke-width: 2; }
+.plot .day-line { stroke: #e2e8f0; stroke-width: 1; stroke-dasharray: 3 3; }
+.tip-title { font-weight: 700; margin-bottom: 4px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.curve-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.curve-list button {
+  width: 100%; display: grid; grid-template-columns: 18px 84px minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  padding: 6px 8px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 12px; color: var(--text); text-align: left; cursor: pointer;
+}
+.curve-list button:hover { background: #f8fafc; }
+.curve-list button.on { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.curve-list i { width: 16px; height: 3px; border-radius: 2px; background: #cbd5e1; }
+.curve-list button.on i { background: var(--accent); }
+.curve-date { color: var(--muted); font-variant-numeric: tabular-nums; }
+.curve-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.curve-views { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------------------------------------------------------------- スマホ */
 @media (max-width: 640px) {

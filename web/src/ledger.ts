@@ -89,6 +89,14 @@ export const loadFlags = () => cached(fileCache, 'flags', () => fetchJson<Flags>
 export interface Totals { dates: string[]; total: number[]; inc: Record<VideoType, (number | null)[]> }
 export const loadTotals = () => cached(fileCache, 'totals', () => fetchJson<Totals>('summary/daily_totals.json')) as Promise<Totals | null>
 
+/**
+ * シンガーごとの日ごとの合計（summary/talents/{名前}.json）。数え方は RK全体の合計と同じ。
+ * total・subs はその日の総再生数・登録者数。記録を始める前の日は null。inc はその日か前の日に記録が無ければ null
+ */
+export interface TalentTotals { dates: string[]; total: (number | null)[]; subs: (number | null)[]; inc: Record<VideoType, (number | null)[]> }
+export const loadTalentTotals = (name: string) => cached(fileCache, `talent:${name}`,
+  () => fetchJson<TalentTotals>(`summary/talents/${encodeURIComponent(name)}.json`)) as Promise<TalentTotals | null>
+
 const dailyCache = new Map<string, Promise<Daily | null>>()
 export const loadDaily = (date: string) =>
   cached(dailyCache, date, () => fetchJson<Daily>(`daily/${date.slice(0, 4)}/${date}.json`))
@@ -346,32 +354,32 @@ export function buildRanking(channels: Channel[], catalog: Catalog, start: strin
 }
 
 // ----------------------------------------------------------------
-// Analytics（旧サイトの「分析」の4つのグラフ）
+// Analytics（再生数・登録者数の推移と月別の再生数は summary/talents の合計から。ここは投稿ペースと初速カーブ）
 // ----------------------------------------------------------------
 
 export type TypeBreakdown = Record<VideoType, number>
-export interface DailyViewsEntry extends TypeBreakdown { date: string }
 export interface MonthEntry extends TypeBreakdown { month: string }
 export interface VelocityCurveItem { vid_id: string; title: string; 公開日: string; curve: { day: number; views: number }[] }
 
 const emptyBreakdown = (): TypeBreakdown => ({ Movie: 0, Short: 0, LiveArchive: 0 })
 
-/** 直近の日別の再生数の増加（種別ごと）。増えた分だけを足す */
-export function buildDailyViewsBreakdown(name: string, catalog: Catalog, flags: Flags, dailies: Daily[]): DailyViewsEntry[] {
-  const mine = everVideosOf(name, catalog)
-  const out: DailyViewsEntry[] = []
-  for (let i = 1; i < dailies.length; i++) {
-    const cur = dailies[i], prev = dailies[i - 1]
-    const e: DailyViewsEntry = { date: cur.date, ...emptyBreakdown() }
-    for (const [id, c] of mine) {
-      const t = typeOf(name, id, c, flags)
-      if (!isShownType(t) || !cur.v[id] || !prev.v[id]) continue
-      const diff = cur.v[id][0] - prev.v[id][0]
-      if (diff > 0) e[t] += diff
+/**
+ * 月別の再生数の増加。日ごとの増加（シンガーごとの合計の inc）をその月の分だけ足す。
+ * 月の初日に増加の記録が無い月（記録を始めた月）は、月の途中からしか分からないので出さない（旧サイトの2月と同じ扱い）
+ */
+export function buildMonthlyViews(t: TalentTotals): MonthEntry[] {
+  const months = new Map<string, MonthEntry>()
+  t.dates.forEach((date, i) => {
+    if (t.inc.Movie[i] === null) return
+    const month = date.slice(0, 7)
+    if (!months.has(month)) {
+      if (date.slice(8) !== '01') return
+      months.set(month, { month, ...emptyBreakdown() })
     }
-    out.push(e)
-  }
-  return out
+    const e = months.get(month)!
+    for (const ty of VIDEO_TYPES) e[ty] += t.inc[ty][i] ?? 0
+  })
+  return [...months.values()]
 }
 
 /** 投稿ペース（公開月ごとの本数） */
@@ -385,43 +393,6 @@ export function buildPostingCalendar(name: string, catalog: Catalog, flags: Flag
     months.get(month)![t]++
   }
   return [...months.values()].sort((a, b) => a.month.localeCompare(b.month))
-}
-
-const monthEnd = (month: string) => addDays(`${addMonth(month, 1)}-01`, -1)
-function addMonth(month: string, n: number): string {
-  const [y, m] = month.split('-').map(Number)
-  const d = new Date(Date.UTC(y, m - 1 + n, 1))
-  return d.toISOString().slice(0, 7)
-}
-
-/**
- * 月別の再生数の増加。その月の最後の日の累計 − 前の月の最後の日の累計（その月に公開された動画は0から）。
- * 前の月の最後の日の記録が無い月（記録を始めた月）は、月の途中からしか分からないので出さない（旧サイトの2月と同じ扱い）。
- */
-export async function buildMonthlyViews(name: string, catalog: Catalog, flags: Flags, latestDate: string): Promise<MonthEntry[]> {
-  const months: string[] = []
-  for (let m = LEDGER_START.slice(0, 7); m <= latestDate.slice(0, 7); m = addMonth(m, 1)) months.push(m)
-  const usable = months.filter(m => monthEnd(addMonth(m, -1)) >= LEDGER_START)
-  if (!usable.length) return []
-  const ends = (m: string) => (monthEnd(m) < latestDate ? monthEnd(m) : latestDate)
-  const dates = [...new Set(usable.flatMap(m => [monthEnd(addMonth(m, -1)), ends(m)]))]
-  const snaps = await loadDailies(dates)
-  // 月の途中で一覧から外れた動画は、月末の記録が無いのでその月は数えない（月末の日だけを読むため）
-  const mine = everVideosOf(name, catalog)
-  const out: MonthEntry[] = []
-  for (const m of usable) {
-    const end = snaps[ends(m)], base = snaps[monthEnd(addMonth(m, -1))]
-    if (!end || !base) continue
-    const e: MonthEntry = { month: m, ...emptyBreakdown() }
-    for (const [id, c] of mine) {
-      const t = typeOf(name, id, c, flags)
-      if (!isShownType(t) || !end.v[id]) continue
-      const diff = end.v[id][0] - (base.v[id]?.[0] ?? 0)
-      if (diff > 0) e[t] += diff
-    }
-    out.push(e)
-  }
-  return out
 }
 
 /**
