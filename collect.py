@@ -10,6 +10,7 @@ RKMusic_Ledger の収集スクリプト。cron-job.org が毎時0分に GitHub A
     daily/YYYY/YYYY-MM-DD.json  0時の全件。全動画の [再生数, 高評価数, コメント数] とチャンネルの登録者数など
     hourly/YYYY-MM-DD/HH.json   毎時。前の回から再生数が変わった動画の再生数と、登録者数
     summary/daily_totals.json   RK全体の日ごとの合計（総再生数・種別ごとに増えた再生数）。0時の回と予備の実行で入れ直す小さい台帳
+    summary/talents/{名前}.json シンガーごとの日ごとの合計（総再生数・登録者数・種別ごとに増えた再生数）。同じく入れ直す
 時刻はすべて日本時間。
 
 回の種類（--mode）:
@@ -64,6 +65,7 @@ CHANNELS_FILE = 'channels.json'
 FLAGS_FILE = 'flags.json'
 CATALOG_FILE = 'catalog.json'
 TOTALS_FILE = 'summary/daily_totals.json'
+TALENTS_DIR = 'summary/talents'
 TYPES = ('Movie', 'Short', 'LiveArchive')
 TAB_PLAYLISTS = (('UULF', 'Movie'), ('UUSH', 'Short'), ('UULV', 'LiveArchive'))
 
@@ -671,23 +673,64 @@ def day_totals(data, prev, catalog, flags):
     return total, inc
 
 
-def update_totals(days, catalog, flags):
+def talent_totals(data, prev, catalog, flags, names):
     """
-    summary/daily_totals.json（サイトの「RK全体の再生数」のグラフが読む、日ごとの合計）の、指定した日の分を入れ直す。
-    1日ぶんは数十バイトの小さいファイルなので、書き換えてよい台帳として扱う
+    その日のシンガーごとの合計。{名前: (総再生数, 登録者数, 種別ごとに増えた再生数)}。数え方は day_totals と同じ。
+    その日に記録が無いシンガーは総再生数・登録者数が None。その日か前の日に記録が無ければ、増えた再生数は None
     """
+    inc = {name: {t: 0 for t in TYPES} for name in names}
+    if prev is not None:
+        for vid, x in data['v'].items():
+            p = prev['v'].get(vid)
+            c = catalog['videos'].get(vid)
+            if p is None or c is None or x[0] <= p[0] or c['タレント'] not in inc:
+                continue
+            t = flags.get(c['タレント'], {}).get(vid, c['type'])
+            if t in TYPES:
+                inc[c['タレント']][t] += x[0] - p[0]
+    out = {}
+    for name in names:
+        ch = data['channels'].get(name)
+        ok = prev is not None and ch is not None and name in prev['channels']
+        out[name] = (ch.get('総再生数') if ch else None, ch.get('登録者数') if ch else None,
+                     inc[name] if ok else {t: None for t in TYPES})
+    return out
+
+
+def update_totals(days, catalog, flags, channels):
+    """
+    summary/ の日ごとの合計の、指定した日の分を入れ直す。1日ぶんは数十バイトの小さいファイルなので、書き換えてよい台帳として扱う。
+      daily_totals.json     RK全体（サイトの Dashboard の「RK全体の再生数」）
+      talents/{名前}.json   シンガーごと（サイトのシンガーの Analytics の推移と月別）
+    """
+    names = [c['name'] for c in channels]
+    computed = {}
+    for d in sorted(set(days)):
+        data = read_json(daily_path(d))
+        if data:
+            prev = read_json(daily_path(shift_day(d, -1)))
+            computed[d] = (day_totals(data, prev, catalog, flags), talent_totals(data, prev, catalog, flags, names))
+
     totals = read_json(TOTALS_FILE, None)
     if not totals:
         print(f'⚠️  {TOTALS_FILE} がありません。今回の日の分だけで作ります')
         totals = {'dates': [], 'total': [], 'inc': {t: [] for t in TYPES}}
     rows = {d: (totals['total'][i], {t: totals['inc'][t][i] for t in TYPES}) for i, d in enumerate(totals['dates'])}
-    for d in sorted(set(days)):
-        data = read_json(daily_path(d))
-        if data:
-            rows[d] = day_totals(data, read_json(daily_path(shift_day(d, -1))), catalog, flags)
+    for d, (rk, _) in computed.items():
+        rows[d] = rk
     dates = sorted(rows)
     write_json(TOTALS_FILE, {'dates': dates, 'total': [rows[d][0] for d in dates],
                              'inc': {t: [rows[d][1][t] for d in dates] for t in TYPES}})
+
+    for name in names:
+        rel = f'{TALENTS_DIR}/{name}.json'
+        cur = read_json(rel, None) or {'dates': [], 'total': [], 'subs': [], 'inc': {t: [] for t in TYPES}}
+        rows = {d: (cur['total'][i], cur['subs'][i], {t: cur['inc'][t][i] for t in TYPES}) for i, d in enumerate(cur['dates'])}
+        for d, (_, per) in computed.items():
+            rows[d] = per[name]
+        dates = sorted(rows)
+        write_json(rel, {'dates': dates, 'total': [rows[d][0] for d in dates], 'subs': [rows[d][1] for d in dates],
+                         'inc': {t: [rows[d][2][t] for d in dates] for t in TYPES}})
 
 
 def run_daily(now, fill=False):
@@ -722,7 +765,7 @@ def run_daily(now, fill=False):
     write_json(daily_path(today), daily)
     if changed:
         write_json(CATALOG_FILE, catalog)
-    update_totals(made + [today], catalog, flags)
+    update_totals(made + [today], catalog, flags, channels)
     if not fill and not exists(hourly_path(today, 0)):
         filled = set(daily.get(FILL_MARK, []))
         write_json(hourly_path(today, 0), {
@@ -806,7 +849,7 @@ def run_fill(now):
     write_json(daily_path(today), daily)
     if changed:
         write_json(CATALOG_FILE, catalog)
-    update_totals([today], catalog, flags)
+    update_totals([today], catalog, flags, channels)
 
 # ----------------------------------------------------------------
 # 毎時の回
