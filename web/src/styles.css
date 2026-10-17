@@ -29,7 +29,7 @@
   --shadow-hover: 0 2px 4px rgba(15, 23, 42, .06), 0 12px 28px rgba(15, 23, 42, .10);
   --header-h: 56px;
   --select-w: 240px;  /* シンガー選択のボタンと一覧の幅（PC） */
-  --charts-h: 550px;  /* カードの棒グラフ2つを合わせた高さ */
+  --charts-h: 400px;  /* カードの棒グラフ2つを合わせた高さ */
 }
 
 * { box-sizing: border-box; }
@@ -195,7 +195,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .metric-label { font-size: 11px; font-weight: 600; color: var(--muted); }
 .metric strong { font-size: 14px; color: var(--ink); }
 
-/* カードの棒グラフ2つ（再生数・高評価）。2つ合わせて高さ550px、1つずつ半分 */
+/* カードの棒グラフ2つ（再生数・高評価）。2つ合わせて高さ400px、1つずつ半分 */
 .card-charts {
   height: var(--charts-h); display: grid; grid-template-rows: 1fr 1fr; grid-template-columns: minmax(0, 1fr);
   gap: 10px; margin-top: 12px;

@@ -14,7 +14,7 @@ function Metric({ label, value, diff }: { label: string; value: number; diff: nu
 
 /**
  * 動画1本のカード。ヘッダー（左8割にコンテンツ名、右2割に投稿日と経過日数）の下に、再生数・高評価・コメント、
- * その下に1日ごとの再生数と高評価の増加の棒グラフ（今日を含む15日。2つ合わせて高さ550px）
+ * その下に1日ごとの再生数と高評価の増加の棒グラフ（今日を含む15日。2つ合わせて高さ400px）
  */
 export default function VideoCard({ video }: { video: VideoCardData }) {
   const posted = video.公開日 ? postedLines(video.公開日) : null
