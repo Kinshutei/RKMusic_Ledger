@@ -40,8 +40,11 @@ const BASE = (import.meta.env.VITE_LEDGER_BASE as string | undefined)
   ?? 'https://raw.githubusercontent.com/Kinshutei/RKMusic_Ledger/main'
 const TODAY_OVERRIDE = import.meta.env.VITE_LEDGER_TODAY as string | undefined
 
-/** Ledger の最初の daily。これより前の日は取りに行かない（過去の記録を移したら書き換える） */
-export const LEDGER_START = '2026-10-18'
+/**
+ * Ledger の最初の daily。これより前の日は取りに行かない。
+ * 2026-03-31〜2026-10-17 は旧 RKMusic_AllSinger_PFR から移した記録（3/31 は 4/1 の前日比と4月の月別の土台）
+ */
+export const LEDGER_START = '2026-03-31'
 
 const FETCH_RETRIES = 3
 const FETCH_RETRY_DELAY_MS = 1000
@@ -176,14 +179,23 @@ export interface VideoCardData {
   高評価15d増加: number
   コメント数: number
   再生数daily: (number | null)[]   // [0] が最新日の前日比。新しい順に最大15日
+  再生数daily_dates: string[]      // 再生数daily の各値の日付（増えた側の日。値が null の所は無い）
   高評価daily: (number | null)[]
   コメント数daily: (number | null)[]
   collab_tags: string[]
 }
 
-/** そのシンガーの動画（一覧から外れた動画は収集をやめているので除く） */
+/** そのシンガーの今の動画（一覧から外れた動画は収集をやめているので除く）。カードとシンガー名の横の数字に使う */
 function videosOf(name: string, catalog: Catalog): [string, CatalogVideo][] {
   return Object.entries(catalog.videos).filter(([, c]) => c.タレント === name && !c.外れた日)
+}
+
+/**
+ * そのシンガーの、これまでのすべての動画（一覧から外れた動画も含む）。Analytics の過去を振り返るグラフに使う。
+ * 外れた動画は外れた日から daily に記録が無いので、記録のある間だけ数えられる（旧サイトも外れた動画を数えていた）
+ */
+function everVideosOf(name: string, catalog: Catalog): [string, CatalogVideo][] {
+  return Object.entries(catalog.videos).filter(([, c]) => c.タレント === name)
 }
 
 /** シンガー名の横の数字。最新の daily と、その前の daily の差を前日比にする */
@@ -225,14 +237,17 @@ export function buildVideoCards(name: string, catalog: Catalog, flags: Flags, da
   for (const [id, c] of videosOf(name, catalog)) {
     const type = typeOf(name, id, c, flags)
     if (!isShownType(type) || !latest.v[id]) continue
-    const recs = dailies.filter(d => d.v[id]).map(d => d.v[id])
+    const days = dailies.filter(d => d.v[id])
+    const recs = days.map(d => d.v[id])
     const views: (number | null)[] = [], likes: (number | null)[] = [], comments: (number | null)[] = []
+    const dates: string[] = []
     for (let i = 1; i <= 15; i++) {
       if (recs.length > i) {
         const curr = recs[recs.length - i], prev = recs[recs.length - i - 1]
         views.push(curr[0] - prev[0])
         likes.push(curr[1] - prev[1])
         comments.push(curr[2] - prev[2])
+        dates.push(days[days.length - i].date)
       } else {
         views.push(null); likes.push(null); comments.push(null)
       }
@@ -243,7 +258,7 @@ export function buildVideoCards(name: string, catalog: Catalog, flags: Flags, da
       再生数: v, 再生数15d増加: views.reduce<number>((a, x) => a + (x ?? 0), 0),
       高評価数: l, 高評価15d増加: likes.reduce<number>((a, x) => a + (x ?? 0), 0),
       コメント数: cm,
-      再生数daily: views, 高評価daily: likes, コメント数daily: comments,
+      再生数daily: views, 再生数daily_dates: dates, 高評価daily: likes, コメント数daily: comments,
       collab_tags: detectCollabTags(c.タイトル || ''),
     })
   }
@@ -263,7 +278,7 @@ const emptyBreakdown = (): TypeBreakdown => ({ Movie: 0, Short: 0, LiveArchive: 
 
 /** 直近の日別の再生数の増加（種別ごと）。増えた分だけを足す */
 export function buildDailyViewsBreakdown(name: string, catalog: Catalog, flags: Flags, dailies: Daily[]): DailyViewsEntry[] {
-  const mine = videosOf(name, catalog)
+  const mine = everVideosOf(name, catalog)
   const out: DailyViewsEntry[] = []
   for (let i = 1; i < dailies.length; i++) {
     const cur = dailies[i], prev = dailies[i - 1]
@@ -282,7 +297,7 @@ export function buildDailyViewsBreakdown(name: string, catalog: Catalog, flags: 
 /** 投稿ペース（公開月ごとの本数） */
 export function buildPostingCalendar(name: string, catalog: Catalog, flags: Flags): MonthEntry[] {
   const months = new Map<string, MonthEntry>()
-  for (const [id, c] of videosOf(name, catalog)) {
+  for (const [id, c] of everVideosOf(name, catalog)) {
     const t = typeOf(name, id, c, flags)
     if (!c.公開日 || !isShownType(t)) continue
     const month = c.公開日.slice(0, 7)
@@ -311,7 +326,8 @@ export async function buildMonthlyViews(name: string, catalog: Catalog, flags: F
   const ends = (m: string) => (monthEnd(m) < latestDate ? monthEnd(m) : latestDate)
   const dates = [...new Set(usable.flatMap(m => [monthEnd(addMonth(m, -1)), ends(m)]))]
   const snaps = await loadDailies(dates)
-  const mine = videosOf(name, catalog)
+  // 月の途中で一覧から外れた動画は、月末の記録が無いのでその月は数えない（月末の日だけを読むため）
+  const mine = everVideosOf(name, catalog)
   const out: MonthEntry[] = []
   for (const m of usable) {
     const end = snaps[ends(m)], base = snaps[monthEnd(addMonth(m, -1))]
@@ -334,7 +350,7 @@ export async function buildMonthlyViews(name: string, catalog: Catalog, flags: F
  */
 export async function buildVelocityCurves(name: string, catalog: Catalog, flags: Flags, latestDate: string,
   maxVideos = 10, maxDays = 60): Promise<VelocityCurveItem[]> {
-  const candidates = videosOf(name, catalog)
+  const candidates = everVideosOf(name, catalog)
     .filter(([id, c]) => typeOf(name, id, c, flags) === 'Movie' && c.公開日)
     .sort(([, a], [, b]) => b.公開日.localeCompare(a.公開日))
   const items: VelocityCurveItem[] = []

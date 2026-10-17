@@ -142,6 +142,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .video-stats { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--muted); }
 .video-stats strong { color: var(--text); }
 .milestone { font-size: 12px; color: var(--accent); margin-top: 4px; }
+/* カードの棒グラフ（1日ごとの再生数の増加） */
+.increase-bars { margin-top: 8px; overflow: hidden; }
+.increase-bars svg { display: block; font-family: inherit; }
+.increase-bars .zero { stroke: #3a4580; stroke-width: 1; }
+.increase-bars rect.up { fill: #3a4580; }
+.increase-bars rect.down { fill: #e88899; }
+.increase-bars .value { font-size: 10px; fill: #2a305c; }
+.increase-bars .value.down { fill: #aa2233; }
+.increase-bars .day { font-size: 10px; fill: #9aa0bd; }
 
 /* ---------------------------------------------------------------- Analytics */
 .analytics h3 { font-size: 15px; margin: 28px 0 8px; }

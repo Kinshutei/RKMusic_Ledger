@@ -16,6 +16,13 @@ export function fmtViews(v: number): string {
   return String(v)
 }
 
+/** カードの棒グラフの上の数字。1,000以上は K、100万以上は M で略し、増えた数には + を付ける（+850 / +1K / +2.3M） */
+export function fmtIncrease(v: number): string {
+  const a = Math.abs(v)
+  const body = a >= 999_500 ? `${(a / 1_000_000).toFixed(1)}M` : a >= 1_000 ? `${Math.round(a / 1_000)}K` : String(a)
+  return (v > 0 ? '+' : v < 0 ? '-' : '') + body
+}
+
 export function niceScale(dataMin: number, dataMax: number, targetTicks = 4) {
   const minV = Math.min(dataMin, 0)
   const maxV = Math.max(dataMax, 0)

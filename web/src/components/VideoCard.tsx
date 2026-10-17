@@ -1,5 +1,6 @@
 import { VideoCardData } from '../ledger'
 import { diffColor, fmtDiff, postedLines, viewMilestoneLabel } from '../format'
+import IncreaseBars from './IncreaseBars'
 
 function Diff({ v }: { v: number | null }) {
   if (v === null) return null
@@ -8,7 +9,7 @@ function Diff({ v }: { v: number | null }) {
 
 /**
  * 動画1本のカード。ヘッダー（左8割にコンテンツ名、右2割に投稿日と経過日数）の下に、再生数・高評価・コメント、
- * その下にキリ番の予測
+ * その下に1日ごとの再生数の増加の棒グラフ（今日の分を含む15日）、その下にキリ番の予測
  */
 export default function VideoCard({ video }: { video: VideoCardData }) {
   const milestone = viewMilestoneLabel(video.再生数, video.再生数daily)
@@ -36,6 +37,7 @@ export default function VideoCard({ video }: { video: VideoCardData }) {
         <span>高評価：<strong>{video.高評価数.toLocaleString()}</strong><Diff v={video.高評価daily[0]} /></span>
         <span>コメント：<strong>{video.コメント数.toLocaleString()}</strong><Diff v={video.コメント数daily[0]} /></span>
       </div>
+      <IncreaseBars daily={video.再生数daily} dates={video.再生数daily_dates} />
       {milestone && <div className="milestone">{milestone}</div>}
     </article>
   )
