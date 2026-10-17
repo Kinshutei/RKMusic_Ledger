@@ -1,6 +1,8 @@
-/* 色はここにまとめる。デザインはこれから決めるので、仮の落ち着いた配色にしている */
+/* 色はここにまとめる。ヘッダーは薄い青、本文の地は白 */
 :root {
-  --bg: #f5f6fa;
+  --bg: #ffffff;
+  --header-bg: #e6effa;
+  --header-border: #cfdcf0;
   --surface: #ffffff;
   --border: #e1e4ee;
   --text: #1f2430;
@@ -33,11 +35,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---------------------------------------------------------------- ヘッダー */
 .app-header {
   position: sticky; top: 0; z-index: 20;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--header-border);
 }
+/* 左の余白は20px、右は10px（本文と同じ） */
 .header-inner {
-  padding: 0 10px;
+  padding: 0 10px 0 20px;
   height: var(--header-h);
   display: flex; align-items: center; gap: 18px;
 }
@@ -75,14 +78,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .singer-panel a {
   display: block; padding: 8px 14px; text-decoration: none;
-  border-bottom: 1px solid var(--bg);
+  border-bottom: 1px solid #eef0f5;
 }
 .singer-panel a:hover { background: var(--accent-soft); }
 .singer-panel a.current { color: var(--accent); font-weight: 700; }
 
 /* ---------------------------------------------------------------- ページ */
-/* 画面の幅いっぱいに使い、左右の余白は10px */
-.page { padding: 18px 10px 48px; }
+/* 画面の幅いっぱいに使い、左の余白は20px、右は10px */
+.page { padding: 18px 10px 48px 20px; }
 .placeholder h1 { font-size: 22px; margin: 4px 0 8px; }
 
 .singer-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; margin-bottom: 14px; }
@@ -120,11 +123,22 @@ button { font: inherit; color: inherit; cursor: pointer; }
   padding: 12px 14px; min-width: 0;
 }
 .video-card:hover { border-color: #c8cde0; }
-.collab-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
-.collab-tag { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.video-title { display: block; font-weight: 600; text-decoration: none; margin-bottom: 2px; overflow-wrap: anywhere; }
+/* カードのヘッダー: 左8割にコンテンツ名（1行、はみ出す分は…）、右2割に投稿日と経過日数の2行。
+   右の2行が2割に収まらない幅のときは、右に要る幅を先に取り、左を縮める */
+.card-head {
+  display: grid; grid-template-columns: minmax(0, 4fr) minmax(max-content, 1fr);
+  gap: 10px; align-items: center;
+  padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.card-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.collab-tags { display: flex; gap: 4px; flex: none; }
+.collab-tag { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-weight: 600; white-space: nowrap; }
+.video-title {
+  min-width: 0; font-weight: 600; text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .video-title:hover { color: var(--accent); text-decoration: underline; }
-.video-date { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.card-date { text-align: right; font-size: 11px; line-height: 1.5; color: var(--muted); white-space: nowrap; }
 .video-stats { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--muted); }
 .video-stats strong { color: var(--text); }
 .milestone { font-size: 12px; color: var(--accent); margin-top: 4px; }
@@ -154,7 +168,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .singer-select { position: static; }
   .singer-btn { max-width: 140px; }
   .singer-panel { position: fixed; top: var(--header-h); left: 8px; right: 8px; width: auto; }
-  .page { padding: 14px 10px 40px; }
+  .page { padding: 14px 10px 40px 20px; }
   .singer-name { font-size: 20px; }
   .cards { grid-template-columns: 1fr; }
 }

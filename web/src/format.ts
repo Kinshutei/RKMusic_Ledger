@@ -32,12 +32,14 @@ export function niceScale(dataMin: number, dataMax: number, targetTicks = 4) {
   return { ticks, niceMin, niceMax }
 }
 
-export function elapsedDaysLabel(公開日: string): string {
-  if (!公開日) return ''
-  const diff = Math.floor((Date.now() - new Date(公開日).getTime()) / 86400000)
-  if (diff < 0) return ''
-  if (diff === 0) return '公開当日'
-  return `公開${diff}日`
+/**
+ * カードの右上の2行。「投稿日：2025/3/13」と「583日経過」（公開当日は0日経過）。公開日は YYYY-MM-DD（世界標準時の日付）。
+ * 日本時間の0時〜9時は、世界標準時ではまだ前の日なので、公開日が今日より先に見えることがある。そのときも0日経過とする
+ */
+export function postedLines(公開日: string): { date: string; elapsed: string } {
+  const [y, m, d] = 公開日.split('-').map(Number)
+  const diff = Math.max(0, Math.floor((Date.now() - new Date(公開日).getTime()) / 86400000))
+  return { date: `投稿日：${y}/${m}/${d}`, elapsed: `${diff}日経過` }
 }
 
 // ---------------------------------------------------------------- キリ番（シンガーのページのカード）
