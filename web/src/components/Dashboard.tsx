@@ -169,6 +169,7 @@ export default function Dashboard() {
           {METRICS.map(m => <RankCard key={m.key} metric={m} rows={rows} />)}
         </div>
       )}
+      <hr className="dash-rule" />
     </div>
   )
 }
