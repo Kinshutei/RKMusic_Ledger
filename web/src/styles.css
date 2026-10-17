@@ -37,7 +37,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   border-bottom: 1px solid var(--border);
 }
 .header-inner {
-  max-width: 1400px; margin: 0 auto; padding: 0 16px;
+  padding: 0 10px;
   height: var(--header-h);
   display: flex; align-items: center; gap: 18px;
 }
@@ -81,7 +81,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .singer-panel a.current { color: var(--accent); font-weight: 700; }
 
 /* ---------------------------------------------------------------- ページ */
-.page { max-width: 1400px; margin: 0 auto; padding: 18px 16px 48px; }
+/* 画面の幅いっぱいに使い、左右の余白は10px */
+.page { padding: 18px 10px 48px; }
 .placeholder h1 { font-size: 22px; margin: 4px 0 8px; }
 
 .singer-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; margin-bottom: 14px; }
@@ -148,12 +149,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* ---------------------------------------------------------------- スマホ */
 @media (max-width: 640px) {
-  .header-inner { gap: 12px; padding: 0 12px; }
+  .header-inner { gap: 12px; }
   .brand { font-size: 15px; }
   .singer-select { position: static; }
   .singer-btn { max-width: 140px; }
   .singer-panel { position: fixed; top: var(--header-h); left: 8px; right: 8px; width: auto; }
-  .page { padding: 14px 12px 40px; }
+  .page { padding: 14px 10px 40px; }
   .singer-name { font-size: 20px; }
   .cards { grid-template-columns: 1fr; }
 }
