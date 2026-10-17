@@ -10,6 +10,14 @@ export function fmtDiff(diff: number | null): string {
   return `${diff >= 0 ? '+' : ''}${diff.toLocaleString()}`
 }
 
+/** 増えた数と増えた率。「+1,234 (+0.5%)」。率は 増えた数 ÷ 始まりの値（旧サイトと同じ。小数1桁） */
+export function fmtDiffRate(diff: number | null, value: number): string {
+  if (diff === null) return '—'
+  const base = value - diff
+  const rate = base > 0 ? Math.round(diff / base * 1000) / 10 : null
+  return fmtDiff(diff) + (rate !== null ? ` (${rate >= 0 ? '+' : ''}${rate}%)` : '')
+}
+
 export function fmtViews(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `${Math.round(v / 1_000)}K`

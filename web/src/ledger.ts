@@ -262,6 +262,83 @@ export function buildVideoCards(name: string, catalog: Catalog, flags: Flags, da
 }
 
 // ----------------------------------------------------------------
+// Dashboard（シンガーのランキング。旧サイトの「Singer別」と同じ計算）
+// ----------------------------------------------------------------
+
+/** 日付・期間の指定で選べる最初の日（3/31 はその前日比の土台） */
+export const MIN_DATE = '2026-04-01'
+
+export interface RankRow {
+  talent: string
+  nodata: boolean            // 選んだ期間がまるごと記録を始める前（途中から加わったシンガー）
+  subs: number; subsDiff: number | null
+  views: number; viewsDiff: number | null
+  likes: number; likesDiff: number | null
+  comments: number; commentsDiff: number | null
+}
+
+/** シンガーごとの記録を始めた日。台帳の「初記録」のいちばん早い日（途中から加わったシンガーは 4/26 など） */
+export function talentFirstDates(catalog: Catalog): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const c of Object.values(catalog.videos)) {
+    if (c.初記録 && (!out[c.タレント] || c.初記録 < out[c.タレント])) out[c.タレント] = c.初記録
+  }
+  return out
+}
+
+/**
+ * 期間 start〜end の集計に要る daily の日付。「終わりの日」と「始まりの前日」、
+ * それに期間の途中で記録を始めたシンガーの記録開始日。1日だけ見るときは start = end
+ */
+export function rankingDates(firstDates: Record<string, string>, start: string, end: string): string[] {
+  const base = addDays(start, -1)
+  const dates = new Set([base, end])
+  for (const first of Object.values(firstDates)) if (first > base && first <= end) dates.add(first)
+  return [...dates]
+}
+
+/**
+ * 期間 start〜end に増えた数（1日だけなら前日比）。増えた数は「終わりの日の累計 − 始まりの前日の累計」。
+ * - 始まりの前日に記録が無い動画（期間中に公開されたもの）は 0 から数える
+ * - 途中から加わったシンガーは記録を始めた日から数え、期間がまるごとその前なら nodata
+ * snaps には rankingDates() の日の daily を渡す
+ */
+export function buildRanking(channels: Channel[], catalog: Catalog, start: string, end: string,
+  snaps: Record<string, Daily>): RankRow[] {
+  const firstDates = talentFirstDates(catalog)
+  const base = addDays(start, -1)
+  const endSnap = snaps[end]
+  const byTalent = new Map<string, string[]>()
+  for (const [id, c] of Object.entries(catalog.videos)) {
+    const ids = byTalent.get(c.タレント)
+    if (ids) ids.push(id); else byTalent.set(c.タレント, [id])
+  }
+  return channels.map(({ name }) => {
+    const first = firstDates[name]
+    const empty: RankRow = { talent: name, nodata: true, subs: 0, subsDiff: null, views: 0, viewsDiff: null,
+      likes: 0, likesDiff: null, comments: 0, commentsDiff: null }
+    if (!endSnap || !first || first > end) return empty
+    const baseSnap = snaps[first > base ? first : base]
+    const n = endSnap.channels[name], p = baseSnap?.channels[name]
+    let likes = 0, likesDiff = 0, comments = 0, commentsDiff = 0
+    for (const id of byTalent.get(name) ?? []) {
+      const e = endSnap.v[id]
+      if (!e) continue  // 終わりの日にまだ無い（後で公開された）動画・もう外れた動画
+      const b = baseSnap?.v[id] ?? [0, 0, 0]
+      likes += e[1]; likesDiff += e[1] - b[1]
+      comments += e[2]; commentsDiff += e[2] - b[2]
+    }
+    return {
+      talent: name, nodata: false,
+      subs: n?.登録者数 ?? 0, subsDiff: n && p ? n.登録者数 - p.登録者数 : null,
+      views: n?.総再生数 ?? 0, viewsDiff: n && p ? n.総再生数 - p.総再生数 : null,
+      likes, likesDiff: baseSnap ? likesDiff : null,
+      comments, commentsDiff: baseSnap ? commentsDiff : null,
+    }
+  })
+}
+
+// ----------------------------------------------------------------
 // Analytics（旧サイトの「分析」の4つのグラフ）
 // ----------------------------------------------------------------
 

@@ -3,6 +3,7 @@ import { Channel, loadChannels } from './ledger'
 import { Route, parseHash } from './route'
 import Header from './components/Header'
 import SingerPage from './components/SingerPage'
+import Dashboard from './components/Dashboard'
 import './styles.css'
 
 export default function App() {
@@ -26,10 +27,7 @@ export default function App() {
       <main className="page">
         {error && <p className="error">シンガーの一覧を取得できませんでした: {error}</p>}
         {route.page === 'dashboard' ? (
-          <section className="placeholder">
-            <h1>Dashboard</h1>
-            <p className="muted">準備中です。</p>
-          </section>
+          <Dashboard />
         ) : (
           <SingerPage key={route.name} name={route.name} />
         )}
