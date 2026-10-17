@@ -1,63 +1,77 @@
 import { useEffect, useRef, useState } from 'react'
 import { fmtIncrease, niceScale } from '../format'
 
-/**
- * カードの棒グラフ。1日ごとの再生数の増加を、古い日から順に今日の分まで（最大15日）。
- * 棒の上に増えた数、下に日付（日）。旧サイトのグラフ（今日の分を外していた）と同じ描き方で、今日の分を含める
- */
-export default function IncreaseBars({ daily, dates }: { daily: (number | null)[]; dates: string[] }) {
+/** 置かれた枠の大きさ（幅と高さ）に合わせて描き直す */
+function useSize() {
   const ref = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(400)
+  const [size, setSize] = useState({ w: 400, h: 200 })
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const update = () => setWidth(el.clientWidth)
+    const update = () => setSize({ w: el.clientWidth, h: el.clientHeight })
     update()
     const ro = new ResizeObserver(update)
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+  return [ref, size] as const
+}
 
+/**
+ * カードの棒グラフ。1日ごとの増加を、古い日から順に今日の分まで（最大15日）。
+ * 棒の上に増えた数（1,000以上は K、100万以上は M）、下に日。枠の高さいっぱいに描く
+ */
+export default function IncreaseBars({ label, kind, daily, dates }: {
+  label: string
+  kind: 'views' | 'likes'
+  daily: (number | null)[]
+  dates: string[]
+}) {
+  const [ref, { w, h }] = useSize()
   // daily は新しい順。値のある日だけを古い順に並べ直す
   const n = daily.findIndex(v => v === null)
   const count = n === -1 ? daily.length : n
-  if (count < 2) return null
   const vals = (daily.slice(0, count) as number[]).reverse()
-  const labels = dates.slice(0, count).reverse().map(d => String(parseInt(d.slice(8), 10)))
+  const days = dates.slice(0, count).reverse().map(d => String(parseInt(d.slice(8), 10)))
 
-  const PAD = { top: 18, right: 4, bottom: 18, left: 4 }
-  const PLOT_H = 64
-  const slot = Math.min(36, Math.floor((width - PAD.left - PAD.right) / count))
-  const barW = Math.max(4, Math.min(30, slot - 4))
-  const svgW = PAD.left + PAD.right + count * slot
-  const svgH = PAD.top + PLOT_H + PAD.bottom
-  const { niceMin, niceMax } = niceScale(Math.min(...vals), Math.max(...vals))
+  // 減った日があるときは、棒の下に書く数字のぶん、日付を下げる
+  const hasNeg = vals.some(v => v < 0)
+  const PAD = { top: 18, right: 2, bottom: hasNeg ? 32 : 20, left: 2 }
+  const plotH = Math.max(40, h - PAD.top - PAD.bottom)
+  const slot = count ? Math.min(40, Math.floor((w - PAD.left - PAD.right) / count)) : 0
+  const barW = Math.max(4, Math.min(28, slot - 6))
+  const { niceMin, niceMax } = niceScale(Math.min(0, ...vals), Math.max(0, ...vals))
   const range = niceMax - niceMin || 1
-  const sy = (v: number) => PAD.top + PLOT_H - ((v - niceMin) / range) * PLOT_H
+  const sy = (v: number) => PAD.top + plotH - ((v - niceMin) / range) * plotH
   const zeroY = sy(0)
 
   return (
-    <div ref={ref} className="increase-bars">
-      <svg width={svgW} height={svgH}>
-        <line x1={PAD.left} y1={zeroY} x2={PAD.left + count * slot} y2={zeroY} className="zero" />
-        {vals.map((v, i) => {
-          const top = Math.min(sy(v), zeroY)
-          const h = Math.max(Math.abs(sy(v) - zeroY), 1)
-          const x = PAD.left + slot * i + (slot - barW) / 2
-          const cx = x + barW / 2
-          return (
-            <g key={i}>
-              <rect x={x} y={top} width={barW} height={h} rx={2} className={v >= 0 ? 'up' : 'down'}>
-                <title>{labels[i]}日: {v >= 0 ? '+' : ''}{v.toLocaleString()}</title>
-              </rect>
-              <text x={cx} y={v >= 0 ? top - 3 : top + h + 10} textAnchor="middle" className={v >= 0 ? 'value' : 'value down'}>
-                {fmtIncrease(v)}
-              </text>
-              <text x={cx} y={PAD.top + PLOT_H + 14} textAnchor="middle" className="day">{labels[i]}</text>
-            </g>
-          )
-        })}
-      </svg>
+    <div className={`increase ${kind}`}>
+      <div className="increase-label"><i />{label}</div>
+      <div ref={ref} className="increase-bars">
+        {count < 2 ? <p className="increase-empty">記録がたまると表示されます</p> : (
+          <svg width={PAD.left + PAD.right + count * slot} height={PAD.top + plotH + PAD.bottom}>
+            <line x1={PAD.left} y1={zeroY} x2={PAD.left + count * slot} y2={zeroY} className="zero" />
+            {vals.map((v, i) => {
+              const top = Math.min(sy(v), zeroY)
+              const bh = Math.max(Math.abs(sy(v) - zeroY), 1)
+              const x = PAD.left + slot * i + (slot - barW) / 2
+              const cx = x + barW / 2
+              return (
+                <g key={i}>
+                  <rect x={x} y={top} width={barW} height={bh} rx={3} className={v >= 0 ? 'up' : 'down'}>
+                    <title>{days[i]}日: {v >= 0 ? '+' : ''}{v.toLocaleString()}</title>
+                  </rect>
+                  <text x={cx} y={v >= 0 ? top - 4 : top + bh + 11} textAnchor="middle" className={v >= 0 ? 'value' : 'value neg'}>
+                    {fmtIncrease(v)}
+                  </text>
+                  <text x={cx} y={PAD.top + plotH + PAD.bottom - 5} textAnchor="middle" className="day">{days[i]}</text>
+                </g>
+              )
+            })}
+          </svg>
+        )}
+      </div>
     </div>
   )
 }

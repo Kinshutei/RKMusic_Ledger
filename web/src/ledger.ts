@@ -174,12 +174,10 @@ export interface VideoCardData {
   type: VideoType
   公開日: string
   再生数: number
-  再生数15d増加: number
   高評価数: number
-  高評価15d増加: number
   コメント数: number
   再生数daily: (number | null)[]   // [0] が最新日の前日比。新しい順に最大15日
-  再生数daily_dates: string[]      // 再生数daily の各値の日付（増えた側の日。値が null の所は無い）
+  再生数daily_dates: string[]      // 各日の増加の日付（増えた側の日。高評価・コメントも同じ日。値が null の所は無い）
   高評価daily: (number | null)[]
   コメント数daily: (number | null)[]
   collab_tags: string[]
@@ -255,9 +253,7 @@ export function buildVideoCards(name: string, catalog: Catalog, flags: Flags, da
     const [v, l, cm] = latest.v[id]
     out.push({
       id, タイトル: c.タイトル || id, type, 公開日: c.公開日 || '',
-      再生数: v, 再生数15d増加: views.reduce<number>((a, x) => a + (x ?? 0), 0),
-      高評価数: l, 高評価15d増加: likes.reduce<number>((a, x) => a + (x ?? 0), 0),
-      コメント数: cm,
+      再生数: v, 高評価数: l, コメント数: cm,
       再生数daily: views, 再生数daily_dates: dates, 高評価daily: likes, コメント数daily: comments,
       collab_tags: detectCollabTags(c.タイトル || ''),
     })

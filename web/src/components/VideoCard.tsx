@@ -1,18 +1,22 @@
 import { VideoCardData } from '../ledger'
-import { diffColor, fmtDiff, postedLines, viewMilestoneLabel } from '../format'
+import { diffColor, fmtDiff, postedLines } from '../format'
 import IncreaseBars from './IncreaseBars'
 
-function Diff({ v }: { v: number | null }) {
-  if (v === null) return null
-  return <span className="stat-diff" style={{ color: diffColor(v) }}> ({fmtDiff(v)})</span>
+function Metric({ label, value, diff }: { label: string; value: number; diff: number | null }) {
+  return (
+    <span className="metric">
+      <span className="metric-label">{label}</span>
+      <strong>{value.toLocaleString()}</strong>
+      {diff !== null && <span className="stat-diff" style={{ color: diffColor(diff) }}>{fmtDiff(diff)}</span>}
+    </span>
+  )
 }
 
 /**
  * 動画1本のカード。ヘッダー（左8割にコンテンツ名、右2割に投稿日と経過日数）の下に、再生数・高評価・コメント、
- * その下に1日ごとの再生数の増加の棒グラフ（今日の分を含む15日）、その下にキリ番の予測
+ * その下に1日ごとの再生数と高評価の増加の棒グラフ（今日を含む15日。2つ合わせて高さ550px）
  */
 export default function VideoCard({ video }: { video: VideoCardData }) {
-  const milestone = viewMilestoneLabel(video.再生数, video.再生数daily)
   const posted = video.公開日 ? postedLines(video.公開日) : null
   return (
     <article className="video-card">
@@ -33,12 +37,14 @@ export default function VideoCard({ video }: { video: VideoCardData }) {
         </div>
       </div>
       <div className="video-stats">
-        <span>再生数：<strong>{video.再生数.toLocaleString()}</strong><Diff v={video.再生数daily[0]} /></span>
-        <span>高評価：<strong>{video.高評価数.toLocaleString()}</strong><Diff v={video.高評価daily[0]} /></span>
-        <span>コメント：<strong>{video.コメント数.toLocaleString()}</strong><Diff v={video.コメント数daily[0]} /></span>
+        <Metric label="再生数" value={video.再生数} diff={video.再生数daily[0]} />
+        <Metric label="高評価" value={video.高評価数} diff={video.高評価daily[0]} />
+        <Metric label="コメント" value={video.コメント数} diff={video.コメント数daily[0]} />
       </div>
-      <IncreaseBars daily={video.再生数daily} dates={video.再生数daily_dates} />
-      {milestone && <div className="milestone">{milestone}</div>}
+      <div className="card-charts">
+        <IncreaseBars label="再生数" kind="views" daily={video.再生数daily} dates={video.再生数daily_dates} />
+        <IncreaseBars label="高評価" kind="likes" daily={video.高評価daily} dates={video.再生数daily_dates} />
+      </div>
     </article>
   )
 }

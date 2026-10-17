@@ -22,7 +22,7 @@ export default function Header({ route, channels }: { route: Route; channels: Ch
   return (
     <header className="app-header">
       <div className="header-inner">
-        <a className="brand" href="#/">RKMusic Ledger</a>
+        <a className="brand" href="#/"><span className="brand-mark" aria-hidden />RKMusic Ledger</a>
         <a className={`nav-link${route.page === 'dashboard' ? ' active' : ''}`} href="#/">Dashboard</a>
         <div className="singer-select" ref={boxRef}>
           <button className={`singer-btn${current ? ' active' : ''}${open ? ' open' : ''}`}
