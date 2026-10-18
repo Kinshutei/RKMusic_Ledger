@@ -45,32 +45,42 @@ export function periodRange(inc: Record<VideoType, (number | null)[]>, n: number
   return { start, from }
 }
 
+/** 表示の切り替え。合計・種別（積み上げ）・種別1つだけ */
+type TrendView = 'total' | 'type' | VideoType
+const isSingle = (v: TrendView): v is VideoType => v !== 'total' && v !== 'type'
+
 /**
  * 1日に増えた再生数の推移。面グラフに7日平均の線を重ね、上に期間の増加・1日平均・前の同じ長さの期間との比較・総再生数。
- * 合計と種別（動画・ショート・ライブの積み上げ）を切り替えられる。カーソル（スマホは指）でその日の数字
+ * 合計と種別（動画・ショート・ライブの積み上げ）を切り替えられる。typeButtons を付けると、種別1つだけの表示も選べる
+ * （そのときは期間の増加・1日平均・比較もその種別の値。総再生数は種別ごとの累計を記録していないので全体のまま）。
+ * カーソル（スマホは指）でその日の数字
  */
-export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod }: {
+export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod, typeButtons = false }: {
   title: string
   totalLabel: string
   data: TrendData
   periods: number[]
   period: number
   onPeriod: (d: number) => void
+  typeButtons?: boolean
 }) {
-  const [view, setView] = useState<'total' | 'type'>('total')
+  const [view, setView] = useState<TrendView>('total')
   const [hover, setHover] = useState<number | null>(null)
   const [ref, w] = useWidth()
   const gradId = `fill${useId().replace(/[^a-zA-Z0-9]/g, '')}`
+  const single = isSingle(view) ? view : null
 
-  // 1日の増加（合計）と7日平均
+  // 1日の増加（合計、または選んだ種別だけ）と7日平均
   const series = useMemo(() => {
-    const sum = data.dates.map((_, i) => (data.inc.Movie[i] === null ? null : VIDEO_TYPES.reduce((s, t) => s + (data.inc[t][i] ?? 0), 0)))
+    const sum = data.dates.map((_, i) => (data.inc.Movie[i] === null ? null
+      : single ? data.inc[single][i] ?? 0 : VIDEO_TYPES.reduce((s, t) => s + (data.inc[t][i] ?? 0), 0)))
     const ma = sum.map((_, i) => {
       const win = sum.slice(Math.max(0, i - 6), i + 1).filter((v): v is number => v !== null)
       return win.length ? win.reduce((a, b) => a + b, 0) / win.length : null
     })
     return { sum, ma }
-  }, [data])
+  }, [data, single])
+  const color = single ? TYPE_COLOR[single] : '#4f46e5'
 
   const n = data.dates.length
   const { start, from } = periodRange(data.inc, n, period)
@@ -125,9 +135,10 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod 
         <h2>{title}</h2>
         <div className="panel-tools">
           <PeriodSeg periods={periods} period={period} onPeriod={p => { onPeriod(p); setHover(null) }} />
-          <div className="seg">
+          <div className="seg wrap">
             <button className={view === 'total' ? 'active' : ''} onClick={() => setView('total')}>合計</button>
             <button className={view === 'type' ? 'active' : ''} onClick={() => setView('type')}>種別</button>
+            {typeButtons && VIDEO_TYPES.map(t => <button key={t} className={view === t ? 'active' : ''} onClick={() => setView(t)}>{TYPE_LABEL[t]}</button>)}
           </div>
         </div>
       </div>
@@ -145,8 +156,8 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod 
           onTouchStart={e => pick(e.touches[0].clientX, e.currentTarget)} onTouchMove={e => pick(e.touches[0].clientX, e.currentTarget)}>
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#4f46e5" stopOpacity=".42" />
-              <stop offset="100%" stopColor="#4f46e5" stopOpacity=".02" />
+              <stop offset="0%" style={{ stopColor: color, stopOpacity: .42 }} />
+              <stop offset="100%" style={{ stopColor: color, stopOpacity: .02 }} />
             </linearGradient>
           </defs>
           {ticks.map(t => (
@@ -160,25 +171,25 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod 
               {md(data.dates[idx[k]])}
             </text>
           ))}
-          {view === 'total' ? (
+          {view === 'type' ? stacks.map(s => <path key={s.t} d={areaPath(s.top, s.bottom)} fill={TYPE_COLOR[s.t]} opacity={.85} />) : (
             <>
               <path d={areaPath(sums, zeros)} fill={`url(#${gradId})`} />
-              <path d={linePath(sums)} className="daily-line" />
+              <path d={linePath(sums)} className="daily-line" style={single ? { stroke: color } : undefined} />
             </>
-          ) : stacks.map(s => <path key={s.t} d={areaPath(s.top, s.bottom)} fill={TYPE_COLOR[s.t]} opacity={.85} />)}
+          )}
           <path d={linePath(idx.map(i => series.ma[i]))} className="ma-line" />
           {hk !== null && hi !== null && (
             <g>
               <line x1={x(hk)} x2={x(hk)} y1={PAD.top} y2={PAD.top + plotH} className="cross" />
               <circle cx={x(hk)} cy={y(series.ma[hi] ?? 0)} r={4} className="ma-dot" />
-              {view === 'total' && <circle cx={x(hk)} cy={y(series.sum[hi] ?? 0)} r={4} className="daily-dot" />}
+              {view !== 'type' && <circle cx={x(hk)} cy={y(series.sum[hi] ?? 0)} r={4} className="daily-dot" style={single ? { fill: color } : undefined} />}
             </g>
           )}
         </svg>
         {hk !== null && hi !== null && (
           <div className={`plot-tip${x(hk) > w * .6 ? ' left' : ''}`} style={{ left: x(hk) }}>
             <div className="tip-date">{md(data.dates[hi])}（{wd(data.dates[hi])}）</div>
-            <div className="tip-row"><span>増加</span><strong>+{(series.sum[hi] ?? 0).toLocaleString()}</strong></div>
+            <div className="tip-row"><span>{single && <i style={{ background: color }} />}{single ? `${TYPE_LABEL[single]}の増加` : '増加'}</span><strong>+{(series.sum[hi] ?? 0).toLocaleString()}</strong></div>
             <div className="tip-row"><span>7日平均</span><strong>+{Math.round(series.ma[hi] ?? 0).toLocaleString()}</strong></div>
             {view === 'type' && VIDEO_TYPES.map(t => (
               <div key={t} className="tip-row"><span><i style={{ background: TYPE_COLOR[t] }} />{TYPE_LABEL[t]}</span><strong>+{(data.inc[t][hi] ?? 0).toLocaleString()}</strong></div>
@@ -188,9 +199,11 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod 
       </div>
 
       <div className="legend">
-        {view === 'total'
-          ? <span><i style={{ background: 'linear-gradient(#4f46e5aa, #4f46e522)' }} />1日の増加</span>
-          : VIDEO_TYPES.map(t => <span key={t}><i style={{ background: TYPE_COLOR[t] }} />{TYPE_LABEL[t]}</span>)}
+        {view === 'type'
+          ? VIDEO_TYPES.map(t => <span key={t}><i style={{ background: TYPE_COLOR[t] }} />{TYPE_LABEL[t]}</span>)
+          : single
+            ? <span><i style={{ background: color }} />1日の増加（{TYPE_LABEL[single]}）</span>
+            : <span><i style={{ background: 'linear-gradient(#4f46e5aa, #4f46e522)' }} />1日の増加</span>}
         <span><i className="ma-swatch" />7日平均</span>
       </div>
     </section>
@@ -207,5 +220,5 @@ export default function TrendChart() {
   }, [])
   if (error) return <p className="muted">{error}</p>
   if (!data) return <p className="muted loading">読み込み中…</p>
-  return <TrendPanel title="RK全体の再生数" totalLabel="RK全体の総再生数" data={data} periods={[30, 90, 0]} period={period} onPeriod={setPeriod} />
+  return <TrendPanel title="RK全体の再生数" totalLabel="RK全体の総再生数" data={data} periods={[30, 90, 0]} period={period} onPeriod={setPeriod} typeButtons />
 }

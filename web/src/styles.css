@@ -126,9 +126,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   border: none; background: none; padding: 6px 16px; border-radius: 9px;
   font-size: 13px; font-weight: 600; color: var(--muted);
 }
-/* 年のボタン（投稿ペース）は数が多いので、狭い画面では折り返す */
-.seg.years { flex-wrap: wrap; max-width: 100%; }
-.seg.years button { white-space: nowrap; }
+/* 年のボタン（投稿ペース）や表示の切り替え（合計〜ライブ）は数が多いので、狭い画面では折り返す */
+.seg.years, .seg.wrap { flex-wrap: wrap; max-width: 100%; }
+.seg.years button, .seg.wrap button { white-space: nowrap; }
 .seg button.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, .12); }
 .date-pick { display: flex; align-items: center; gap: 6px; }
 .date-input {
@@ -202,6 +202,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kpi strong { font-size: 18px; }
   .panel { padding: 14px 12px 10px; }
+  /* 表示の切り替え（合計〜ライブの5つ）を1段に収める */
+  .seg.wrap button { padding: 6px 12px; }
 }
 
 /* シンガー名と、右隣の4つのタイル */
