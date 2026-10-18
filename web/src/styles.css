@@ -173,6 +173,24 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .panel-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); }
 /* Dashboard の推移のグラフ（再生数・高評価数）を縦に並べる */
 .trend-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+/* キリ番予測: 左に予測の日時、真ん中にタイトルとシンガー、右に次のキリ番と今の再生数 */
+.ms-list { list-style: none; margin: 0; padding: 0; }
+.ms-row { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; padding: 10px 4px; border-bottom: 1px solid #f1f5f9; }
+.ms-row:last-child { border-bottom: none; }
+.ms-when { display: flex; flex-direction: column; line-height: 1.3; }
+.ms-when strong { font-size: 15px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ms-when span { font-size: 12px; font-weight: 700; color: var(--accent); }
+.ms-body { display: flex; flex-direction: column; min-width: 0; }
+.ms-title { font-size: 13px; font-weight: 600; color: var(--ink); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-title:hover { color: var(--accent); }
+.ms-talent { font-size: 11px; color: var(--muted); }
+.ms-nums { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.ms-target { font-size: 15px; font-weight: 700; color: var(--ink); }
+.ms-rest { font-size: 11px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 640px) {
+  .ms-row { grid-template-columns: 60px minmax(0, 1fr); }
+  .ms-nums { grid-column: 2; flex-direction: row; align-items: baseline; gap: 8px; }
+}
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
 .kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; background: #f8fafc; border-radius: 12px; min-width: 0; }
 .kpi span { font-size: 11px; font-weight: 600; color: var(--muted); }

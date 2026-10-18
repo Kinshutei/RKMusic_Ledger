@@ -426,3 +426,163 @@ export async function buildVelocityCurves(name: string, catalog: Catalog, flags:
   }
   return items
 }
+
+// ----------------------------------------------------------------
+// キリ番予測（Dashboard）
+// ----------------------------------------------------------------
+
+/** 毎時の記録。v は前の回から再生数が変わった動画だけ（動画ID → 再生数）。at は取得した時刻 */
+export interface Hourly { date: string; hour: number; at: string; v: Record<string, number> }
+
+const hourlyCache = new Map<string, Promise<Hourly | null>>()
+export const loadHourly = (date: string, hour: number) => {
+  const hh = String(hour).padStart(2, '0')
+  return cached(hourlyCache, `${date}/${hh}`, () => fetchJson<Hourly>(`hourly/${date}/${hh}.json`))
+}
+
+/** その日の指定した時の毎時の記録を、時刻の順に（収集が動かなかった時間は入らない） */
+export async function loadHourlies(date: string, hours: number[]): Promise<Hourly[]> {
+  const got = await mapLimit(hours, FETCH_LIMIT, h => loadHourly(date, h))
+  return got.filter((h): h is Hourly => h !== null).sort((a, b) => a.hour - b.hour)
+}
+
+/** 今の時（日本時間）。「今日」を差し替えて試すときは 23（その日の分を全部見る） */
+export function nowHourJst(): number {
+  return TODAY_OVERRIDE ? 23 : new Date(Date.now() + 9 * 3600_000).getUTCHours()
+}
+
+/** 次のキリ番。1,000未満は1,000、1万までは千刻み、10万までは1万刻み、100万までは10万刻み、それ以上は100万刻み */
+export function nextMilestone(value: number): number {
+  const unit = value < 1000 ? 1000 : Math.min(10 ** (String(Math.floor(value)).length - 1), 1_000_000)
+  return (Math.floor(value / unit) + 1) * unit
+}
+
+export interface MilestoneForecast {
+  id: string
+  talent: string
+  title: string
+  type: 'Movie' | 'Short'
+  value: number      // 今の再生数
+  milestone: number  // 次のキリ番
+  perDay: number     // 直近24時間の増加（1日あたり）
+  hours: number      // 今（asOf）から何時間後に届くか
+  at: number         // 届く予想の時刻（ミリ秒）
+}
+
+export interface MilestoneInput {
+  d0: Daily              // 最新の daily（今日の0時）
+  d1: Daily              // その前の日
+  d2: Daily | null       // さらに前の日（落ち方の倍率に使う）
+  yesterday: Hourly[]    // d1 の日の毎時（1〜23時）
+  today: Hourly[]        // d0 の日の毎時（1時〜今）
+}
+
+const HOUR_MS = 3600_000
+export const MILESTONE_DETAIL_HOURS = 72  // 3日以内は1時間ずつ進めて「◯時頃」まで出す
+const DECAY_MAX_AGE_DAYS = 14             // 落ち方の倍率を掛けるのは公開14日以内の動画だけ（古い動画は日ごとのぶれで当たりが下がった）
+const DECAY_MIN = 0.5
+const DECAY_MAX = 1.0
+const MILESTONE_MAX_DAYS = 3650           // これより先（届かないものも含む）は出さない
+
+/** 今から remaining 回増えるまでの時間。3日までは時刻の割合 share に沿って1時間ずつ、それより先は1日ずつ進める */
+function hoursToReach(remaining: number, perDay: number, r: number, share: number[], nowHour: number): number | null {
+  let cum = 0
+  for (let h = 1; h <= MILESTONE_DETAIL_HOURS; h++) {
+    const inc = perDay * r ** (h / 24) * share[(nowHour + h) % 24]
+    if (inc > 0 && cum + inc >= remaining) return h - 1 + (remaining - cum) / inc
+    cum += inc
+  }
+  let rest = remaining - cum
+  if (r >= 1) {
+    const hours = MILESTONE_DETAIL_HOURS + (rest / perDay) * 24
+    return hours <= MILESTONE_MAX_DAYS * 24 ? hours : null
+  }
+  for (let d = 0; d < MILESTONE_MAX_DAYS; d++) {
+    const inc = perDay * r ** (MILESTONE_DETAIL_HOURS / 24 + d + 0.5)
+    if (rest <= inc) return MILESTONE_DETAIL_HOURS + (d + rest / inc) * 24
+    rest -= inc
+    if (inc < 1e-6) break
+  }
+  return null
+}
+
+/**
+ * キリ番予測。動画・ショートの今の再生数から、次のキリ番に届く時刻を予測して近い順に返す。
+ * - 今の再生数と24時間前の再生数は、前の日の0時の daily から毎時の記録を順に重ねて求める（毎時の記録は変わった動画だけなので）
+ * - 1日の伸び = 直近24時間の増加。前の日の毎時の記録が欠けていて24時間前ちょうどの値が無いときは、その前で最も近い記録からの増加を
+ *   かかった時間で1日あたりに直す。公開14日以内の動画だけ、前の日からの落ち方（今日0時までの1日 ÷ その前の1日、0.5〜1.0）を先の日ほど掛ける
+ * - 時刻の割合 = RK全体の直近24時間の1時間ごとの増加を、前後の時間と平均して1日の合計で割ったもの
+ */
+export function buildMilestoneForecast(catalog: Catalog, flags: Flags, input: MilestoneInput):
+  { list: MilestoneForecast[]; asOf: number; share: number[] } {
+  const { d0, d1, d2, yesterday, today } = input
+  const last = today.at(-1)
+  const nowHour = last ? last.hour : 0
+  const asOf = Date.parse(last?.at ?? `${d0.date}T00:00:00+09:00`)
+
+  // 時刻ごとの増加（その時刻までの1時間）。収集が動かなかった時間をまたぐ増加は、またいだ時間に均等に割り振る。
+  // 時刻は前の日の0時を0とした通しの時で数え、24時間前（前の日の nowHour 時）より後だけを数える
+  const buckets = new Array<number>(24).fill(0)
+  const windowStart = nowHour
+  const spread = (from: number, to: number, inc: number) => {
+    for (let h = from + 1; h <= to; h++) if (h > windowStart) buckets[h % 24] += inc / (to - from)
+  }
+  const state = new Map<string, number>()
+  for (const [id, x] of Object.entries(d1.v)) state.set(id, x[0])
+  const timeOf = (at: string | null, date: string) => Date.parse(at ?? `${date}T00:00:00+09:00`)
+  let before: Map<string, number> | null = null  // 24時間前の再生数
+  let stateAt = timeOf(d1.at, d1.date), beforeAt = stateAt
+  let prevAbs = 0
+  const step = (v: Record<string, number>, abs: number, at: number) => {
+    let inc = 0
+    for (const [id, n] of Object.entries(v)) {
+      const p = state.get(id)
+      if (p !== undefined && n > p) inc += n - p
+      state.set(id, n)
+    }
+    spread(prevAbs, abs, inc)
+    prevAbs = abs
+    stateAt = at
+  }
+  for (const f of yesterday) {
+    if (before === null && f.hour > nowHour) { before = new Map(state); beforeAt = stateAt }
+    step(f.v, f.hour, Date.parse(f.at))
+  }
+  if (before === null) { before = new Map(state); beforeAt = stateAt }
+  // 今日の0時は daily。前の日の値で埋めた動画（補完）は取った値ではないので重ねない
+  const filled = new Set(d0.補完 ?? [])
+  const d0v: Record<string, number> = {}
+  if (!d0.全体補完) for (const [id, x] of Object.entries(d0.v)) if (!filled.has(id)) d0v[id] = x[0]
+  step(d0v, 24, timeOf(d0.at, d0.date))
+  for (const f of today) step(f.v, 24 + f.hour, Date.parse(f.at))
+  const span = (asOf - beforeAt) / HOUR_MS  // 24時間前の記録から今までの時間（ふつうは24）
+
+  const smooth = buckets.map((_, c) => (buckets[(c + 23) % 24] + buckets[c] + buckets[(c + 1) % 24]) / 3)
+  const sum = smooth.reduce((a, b) => a + b, 0)
+  const share = sum > 0 ? smooth.map(v => v / sum) : new Array<number>(24).fill(1 / 24)
+
+  const list: MilestoneForecast[] = []
+  const base = Date.parse(`${d0.date}T00:00:00Z`)
+  for (const [id, c] of Object.entries(catalog.videos)) {
+    if (c.外れた日) continue
+    const type = typeOf(c.タレント, id, c, flags)
+    if (type !== 'Movie' && type !== 'Short') continue
+    const now = state.get(id), prev = before.get(id)
+    if (now === undefined || prev === undefined) continue  // 24時間前の記録が無い（公開から24時間たっていない）動画は出さない
+    if (span <= 0) continue
+    const perDay = ((now - prev) * 24) / span
+    if (perDay <= 0) continue
+    let r = 1
+    const age = c.公開日 ? (base - Date.parse(`${c.公開日}T00:00:00Z`)) / 86400_000 : Infinity
+    if (age <= DECAY_MAX_AGE_DAYS && d2) {
+      const a = d0.v[id]?.[0], b = d1.v[id]?.[0], q = d2.v[id]?.[0]
+      if (a !== undefined && b !== undefined && q !== undefined && b - q > 0) r = Math.min(DECAY_MAX, Math.max(DECAY_MIN, (a - b) / (b - q)))
+    }
+    const milestone = nextMilestone(now)
+    const hours = hoursToReach(milestone - now, perDay, r, share, nowHour)
+    if (hours === null) continue
+    list.push({ id, talent: c.タレント, title: c.タイトル || id, type, value: now, milestone, perDay, hours, at: asOf + hours * HOUR_MS })
+  }
+  list.sort((a, b) => a.hours - b.hours)
+  return { list, asOf, share }
+}

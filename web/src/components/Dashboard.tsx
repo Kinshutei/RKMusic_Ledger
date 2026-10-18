@@ -5,6 +5,7 @@ import {
 } from '../ledger'
 import { diffColor, fmtDiffRate } from '../format'
 import TrendChart from './TrendChart'
+import Milestones from './Milestones'
 
 // グループの分け方（旧サイトのツリーマップと同じ）
 const GROUPS: { label: string; members: string[] }[] = [
@@ -60,7 +61,8 @@ function RankCard({ metric, rows }: { metric: Metric; rows: RankRow[] }) {
   )
 }
 
-/** トップページ。シンガーのランキング4枚（登録者数・総再生数・総高評価数・総コメント数）と、日付・期間の指定、グループでの絞り込み */
+/** トップページ。シンガーのランキング4枚（登録者数・総再生数・総高評価数・総コメント数）と、日付・期間の指定、グループでの絞り込み。
+ * その下に RK全体の再生数・高評価数の推移、キリ番予測 */
 export default function Dashboard() {
   const [base, setBase] = useState<{ channels: Channel[]; catalog: Catalog; latest: string } | null>(null)
   const [mode, setMode] = useState<'day' | 'range'>('day')
@@ -172,6 +174,8 @@ export default function Dashboard() {
       )}
       <hr className="dash-rule" />
       <TrendChart />
+      <hr className="dash-rule" />
+      <Milestones />
     </div>
   )
 }
