@@ -9,7 +9,7 @@ RKMusic_Ledger の収集スクリプト。cron-job.org が毎時0分に GitHub A
     catalog.json                全動画の台帳（タレント・タイトル・公開日・長さ・種別・確定したか）とチャンネルの情報
     daily/YYYY/YYYY-MM-DD.json  0時の全件。全動画の [再生数, 高評価数, コメント数] とチャンネルの登録者数など
     hourly/YYYY-MM-DD/HH.json   毎時。前の回から再生数が変わった動画の再生数と、登録者数
-    summary/daily_totals.json   RK全体の日ごとの合計（総再生数・種別ごとに増えた再生数）。0時の回と予備の実行で入れ直す小さい台帳
+    summary/daily_totals.json   RK全体の日ごとの合計（総再生数・高評価数と、種別ごとに増えた数）。0時の回と予備の実行で入れ直す小さい台帳
     summary/talents/{名前}.json シンガーごとの日ごとの合計（総再生数・登録者数・種別ごとに増えた再生数）。同じく入れ直す
 時刻はすべて日本時間。
 
@@ -653,24 +653,37 @@ def fill_missing_days(prev, today):
     return made
 
 
-def day_totals(data, prev, catalog, flags):
+def day_totals(data, prev, catalog, flags, prev2=None):
     """
-    その日の RK 全体の合計。(全チャンネルの総再生数の合計, 種別ごとに増えた再生数)。
-    増えた再生数は、前の日にもある動画の、増えた分だけを足す（サイトの Analytics と同じ数え方）。前の日が無ければ None
+    その日の RK 全体の合計。(全チャンネルの総再生数の合計, 種別ごとに増えた再生数, 全動画の高評価数の合計, 種別ごとに増えた高評価数)。
+    増えた数は、前の日にもある動画の、増えた分だけを足す（サイトの Analytics と同じ数え方）。前の日が無ければ None。
+    高評価は、前の日の記録が乱れていた動画（高評価0・コメント0で、その前の日 prev2 は高評価が0でない。YouTube から一時的に
+    0が返ったもの）は、その前の日の値から数える。戻った日に、それまでの高評価が丸ごと増えたように数えないため
     """
     total = sum(ch.get('総再生数', 0) for ch in data['channels'].values())
+    likes = sum(x[1] for x in data['v'].values())
     if prev is None:
-        return total, {t: None for t in TYPES}
+        return total, {t: None for t in TYPES}, likes, {t: None for t in TYPES}
     inc = {t: 0 for t in TYPES}
+    like_inc = {t: 0 for t in TYPES}
     for vid, x in data['v'].items():
         p = prev['v'].get(vid)
         c = catalog['videos'].get(vid)
-        if p is None or c is None or x[0] <= p[0]:
+        if p is None or c is None:
             continue
         t = flags.get(c['タレント'], {}).get(vid, c['type'])
-        if t in inc:
+        if t not in inc:
+            continue
+        if x[0] > p[0]:
             inc[t] += x[0] - p[0]
-    return total, inc
+        base = p[1]
+        if p[1] == 0 and p[2] == 0 and prev2 is not None:
+            q = prev2['v'].get(vid)
+            if q is not None and q[1] > 0:
+                base = q[1]
+        if x[1] > base:
+            like_inc[t] += x[1] - base
+    return total, inc, likes, like_inc
 
 
 def talent_totals(data, prev, catalog, flags, names):
@@ -700,7 +713,7 @@ def talent_totals(data, prev, catalog, flags, names):
 def update_totals(days, catalog, flags, channels):
     """
     summary/ の日ごとの合計の、指定した日の分を入れ直す。1日ぶんは数十バイトの小さいファイルなので、書き換えてよい台帳として扱う。
-      daily_totals.json     RK全体（サイトの Dashboard の「RK全体の再生数」）
+      daily_totals.json     RK全体（サイトの Dashboard の「RK全体の再生数」「RK全体の高評価数」）
       talents/{名前}.json   シンガーごと（サイトのシンガーの Analytics の推移と月別）
     """
     names = [c['name'] for c in channels]
@@ -709,18 +722,23 @@ def update_totals(days, catalog, flags, channels):
         data = read_json(daily_path(d))
         if data:
             prev = read_json(daily_path(shift_day(d, -1)))
-            computed[d] = (day_totals(data, prev, catalog, flags), talent_totals(data, prev, catalog, flags, names))
+            prev2 = read_json(daily_path(shift_day(d, -2)))
+            computed[d] = (day_totals(data, prev, catalog, flags, prev2), talent_totals(data, prev, catalog, flags, names))
 
     totals = read_json(TOTALS_FILE, None)
     if not totals:
         print(f'⚠️  {TOTALS_FILE} がありません。今回の日の分だけで作ります')
         totals = {'dates': [], 'total': [], 'inc': {t: [] for t in TYPES}}
-    rows = {d: (totals['total'][i], {t: totals['inc'][t][i] for t in TYPES}) for i, d in enumerate(totals['dates'])}
+    n = len(totals['dates'])
+    likes = totals.get('likes') or {'total': [None] * n, 'inc': {t: [None] * n for t in TYPES}}
+    rows = {d: (totals['total'][i], {t: totals['inc'][t][i] for t in TYPES}, likes['total'][i], {t: likes['inc'][t][i] for t in TYPES})
+            for i, d in enumerate(totals['dates'])}
     for d, (rk, _) in computed.items():
         rows[d] = rk
     dates = sorted(rows)
     write_json(TOTALS_FILE, {'dates': dates, 'total': [rows[d][0] for d in dates],
-                             'inc': {t: [rows[d][1][t] for d in dates] for t in TYPES}})
+                             'inc': {t: [rows[d][1][t] for d in dates] for t in TYPES},
+                             'likes': {'total': [rows[d][2] for d in dates], 'inc': {t: [rows[d][3][t] for d in dates] for t in TYPES}}})
 
     for name in names:
         rel = f'{TALENTS_DIR}/{name}.json'
