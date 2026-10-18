@@ -84,9 +84,13 @@ export const loadFlags = () => cached(fileCache, 'flags', () => fetchJson<Flags>
 
 /**
  * RK全体の日ごとの合計（summary/daily_totals.json）。total はその日の全チャンネルの総再生数の合計、
- * inc はその日に増えた再生数（種別ごと。前の日にもある動画の、増えた分だけを足す。最初の日は null）
+ * inc はその日に増えた再生数（種別ごと。前の日にもある動画の、増えた分だけを足す。最初の日は null）。
+ * likes は高評価数の同じもの（total はその日の全動画の高評価数の合計）
  */
-export interface Totals { dates: string[]; total: number[]; inc: Record<VideoType, (number | null)[]> }
+export interface Totals {
+  dates: string[]; total: number[]; inc: Record<VideoType, (number | null)[]>
+  likes?: { total: (number | null)[]; inc: Record<VideoType, (number | null)[]> }
+}
 export const loadTotals = () => cached(fileCache, 'totals', () => fetchJson<Totals>('summary/daily_totals.json')) as Promise<Totals | null>
 
 /**

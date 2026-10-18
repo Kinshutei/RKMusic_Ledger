@@ -210,7 +210,7 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod,
   )
 }
 
-/** Dashboard の「RK全体の再生数」 */
+/** Dashboard の「RK全体の再生数」と、その下の「RK全体の高評価数」。期間は2つで連動、表示の切り替えはグラフごと */
 export default function TrendChart() {
   const [data, setData] = useState<Totals | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -218,7 +218,15 @@ export default function TrendChart() {
   useEffect(() => {
     loadTotals().then(d => (d ? setData(d) : setError('集計のファイルがまだありません'))).catch(e => setError(String(e.message ?? e)))
   }, [])
+  const likes = useMemo<TrendData | null>(() => (data?.likes ? { dates: data.dates, total: data.likes.total, inc: data.likes.inc } : null), [data])
   if (error) return <p className="muted">{error}</p>
   if (!data) return <p className="muted loading">読み込み中…</p>
-  return <TrendPanel title="RK全体の再生数" totalLabel="RK全体の総再生数" data={data} periods={[30, 90, 0]} period={period} onPeriod={setPeriod} typeButtons />
+  return (
+    <div className="trend-stack">
+      <TrendPanel title="RK全体の再生数" totalLabel="RK全体の総再生数" data={data} periods={[30, 90, 0]} period={period} onPeriod={setPeriod} typeButtons />
+      {likes
+        ? <TrendPanel title="RK全体の高評価数" totalLabel="RK全体の総高評価数" data={likes} periods={[30, 90, 0]} period={period} onPeriod={setPeriod} typeButtons />
+        : <section className="panel"><div className="panel-head"><h2>RK全体の高評価数</h2></div><p className="muted">集計のファイルにまだ高評価がありません</p></section>}
+    </div>
+  )
 }

@@ -171,6 +171,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .panel-sub strong { color: var(--ink); font-weight: 700; }
 .panel-tools { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; max-width: 100%; }
 .panel-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); }
+/* Dashboard の推移のグラフ（再生数・高評価数）を縦に並べる */
+.trend-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
 .kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; background: #f8fafc; border-radius: 12px; min-width: 0; }
 .kpi span { font-size: 11px; font-weight: 600; color: var(--muted); }
