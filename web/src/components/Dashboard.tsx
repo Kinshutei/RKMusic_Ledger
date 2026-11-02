@@ -32,8 +32,12 @@ const spanDays = (start: string, end: string) =>
 /** ランキングの表1枚。増えた数の多い順に並べ、いちばん下に合計 */
 function RankCard({ metric, rows }: { metric: Metric; rows: RankRow[] }) {
   const sorted = [...rows].sort((a, b) => (b[metric.diff] ?? -Infinity) - (a[metric.diff] ?? -Infinity))
-  const total = sorted.reduce((s, r) => s + r[metric.key], 0)
-  const totalDiff = sorted.every(r => r[metric.diff] === null) ? null : sorted.reduce((s, r) => s + (r[metric.diff] ?? 0), 0)
+  // 取り直し中（null）のシンガーがいれば、合計は分からない
+  const live = sorted.filter(r => !r.nodata)
+  const total = live.some(r => r[metric.key] === null) ? null : live.reduce((s, r) => s + (r[metric.key] ?? 0), 0)
+  const totalDiff = live.length === 0 || live.some(r => r[metric.diff] === null)
+    ? null : live.reduce((s, r) => s + (r[metric.diff] ?? 0), 0)
+  const show = (v: number | null) => (v === null ? '—' : v.toLocaleString())
   return (
     <section className="rank-card">
       <h2>{metric.label}</h2>
@@ -43,7 +47,9 @@ function RankCard({ metric, rows }: { metric: Metric; rows: RankRow[] }) {
             <tr key={r.talent}>
               <td className="rank-no">{i + 1}</td>
               <td className="rank-name">{r.talent}</td>
-              <td className="rank-val">{r.nodata ? '—' : r[metric.key].toLocaleString()}</td>
+              <td className="rank-val" title={!r.nodata && r[metric.key] === null ? '取り直し中（正しい値が取れたら表示されます）' : undefined}>
+                {r.nodata ? '—' : show(r[metric.key])}
+              </td>
               <td className="rank-diff" style={{ color: diffColor(r[metric.diff]) }}>{fmtDiffRate(r[metric.diff], r[metric.key])}</td>
             </tr>
           ))}
@@ -52,7 +58,7 @@ function RankCard({ metric, rows }: { metric: Metric; rows: RankRow[] }) {
           <tr>
             <td className="rank-no" />
             <td className="rank-name">合計</td>
-            <td className="rank-val">{total.toLocaleString()}</td>
+            <td className="rank-val">{show(total)}</td>
             <td className="rank-diff" style={{ color: diffColor(totalDiff) }}>{fmtDiffRate(totalDiff, total)}</td>
           </tr>
         </tfoot>

@@ -24,16 +24,21 @@ export interface Catalog {
 }
 export type Flags = Record<string, Record<string, VideoType>>
 
-export interface DailyChannel { 登録者数: number; 動画数: number; 総再生数: number; 補完?: boolean }
-/** 0時の全件。v は 動画ID → [再生数, 高評価数, コメント数] */
+/** 値が null の項目は取り直し待ち（0時に取れなかった・0以外だったのに0で返ってきた）。取り直しで正しい値が取れたら埋まる */
+export interface DailyChannel { 登録者数: number | null; 動画数: number | null; 総再生数: number | null; 補完?: boolean; 取り直し待ち?: boolean }
+/** 0時の全件。v は 動画ID → [再生数, 高評価数, コメント数]（null は取り直し待ち） */
+export type Stats = [number | null, number | null, number | null]
 export interface Daily {
   date: string
   at: string | null
   channels: Record<string, DailyChannel>
-  v: Record<string, [number, number, number]>
+  v: Record<string, Stats>
   補完?: string[]
   全体補完?: boolean
 }
+
+/** a − b。どちらかが取り直し待ち（null）なら分からないので null */
+const sub = (a: number | null, b: number | null): number | null => (a === null || b === null ? null : a - b)
 
 // 手元で試すときは .env.local で読み先と「今日」を差し替えられる
 const BASE = (import.meta.env.VITE_LEDGER_BASE as string | undefined)
@@ -177,7 +182,8 @@ function detectCollabTags(title: string): string[] {
   return tags
 }
 
-export interface Stat { value: number; diff: number | null }
+/** value が null は取り直し待ちで分からないもの */
+export interface Stat { value: number | null; diff: number | null }
 export interface SingerHeader {
   date: string
   登録者数: Stat
@@ -192,11 +198,11 @@ export interface VideoCardData {
   タイトル: string
   type: VideoType
   公開日: string
-  再生数: number
-  高評価数: number
-  コメント数: number
-  再生数daily: (number | null)[]   // [0] が最新日の前日比。新しい順に最大15日
-  再生数daily_dates: string[]      // 各日の増加の日付（増えた側の日。高評価・コメントも同じ日。値が null の所は無い）
+  再生数: number | null            // null は取り直し待ち
+  高評価数: number | null
+  コメント数: number | null
+  再生数daily: (number | null)[]   // [0] が最新日の前日比。新しい順に最大15日。日付のある所の null は取り直し待ちで分からない日
+  再生数daily_dates: string[]      // 各日の増加の日付（増えた側の日。高評価・コメントも同じ日。記録が足りず増加を出せない所は無い）
   高評価daily: (number | null)[]
   コメント数daily: (number | null)[]
   collab_tags: string[]
@@ -223,7 +229,17 @@ export function buildSingerHeader(name: string, catalog: Catalog, flags: Flags, 
   const ch = latest.channels[name], pch = prev?.channels[name]
   const mine = videosOf(name, catalog)
 
-  const likes = (d: Daily) => mine.reduce((a, [id]) => a + (d.v[id]?.[1] ?? 0), 0)
+  // 高評価数の合計。取り直し待ちの動画があれば分からないので null
+  const likes = (d: Daily): number | null => {
+    let sum = 0
+    for (const [id] of mine) {
+      const x = d.v[id]
+      if (!x) continue
+      if (x[1] === null) return null
+      sum += x[1]
+    }
+    return sum
+  }
   const 内訳: Record<VideoType, number> = { Movie: 0, Short: 0, LiveArchive: 0 }
   let prevCount = 0
   for (const [id, c] of mine) {
@@ -235,9 +251,9 @@ export function buildSingerHeader(name: string, catalog: Catalog, flags: Flags, 
   const count = 内訳.Movie + 内訳.Short + 内訳.LiveArchive
   return {
     date: latest.date,
-    登録者数: { value: ch.登録者数, diff: pch ? ch.登録者数 - pch.登録者数 : null },
-    総再生数: { value: ch.総再生数, diff: pch ? ch.総再生数 - pch.総再生数 : null },
-    総高評価数: { value: likes(latest), diff: prev ? likes(latest) - likes(prev) : null },
+    登録者数: { value: ch.登録者数, diff: pch ? sub(ch.登録者数, pch.登録者数) : null },
+    総再生数: { value: ch.総再生数, diff: pch ? sub(ch.総再生数, pch.総再生数) : null },
+    総高評価数: { value: likes(latest), diff: prev ? sub(likes(latest), likes(prev)) : null },
     総コンテンツ数: { value: count, diff: prev ? count - prevCount : null },
     内訳,
   }
@@ -261,9 +277,9 @@ export function buildVideoCards(name: string, catalog: Catalog, flags: Flags, da
     for (let i = 1; i <= 15; i++) {
       if (recs.length > i) {
         const curr = recs[recs.length - i], prev = recs[recs.length - i - 1]
-        views.push(curr[0] - prev[0])
-        likes.push(curr[1] - prev[1])
-        comments.push(curr[2] - prev[2])
+        views.push(sub(curr[0], prev[0]))
+        likes.push(sub(curr[1], prev[1]))
+        comments.push(sub(curr[2], prev[2]))
         dates.push(days[days.length - i].date)
       } else {
         views.push(null); likes.push(null); comments.push(null)
@@ -290,10 +306,11 @@ export const MIN_DATE = '2026-04-01'
 export interface RankRow {
   talent: string
   nodata: boolean            // 選んだ期間がまるごと記録を始める前（途中から加わったシンガー）
-  subs: number; subsDiff: number | null
-  views: number; viewsDiff: number | null
-  likes: number; likesDiff: number | null
-  comments: number; commentsDiff: number | null
+  // 値が null は取り直し待ちで分からないもの（増えた数も null）
+  subs: number | null; subsDiff: number | null
+  views: number | null; viewsDiff: number | null
+  likes: number | null; likesDiff: number | null
+  comments: number | null; commentsDiff: number | null
 }
 
 /** シンガーごとの記録を始めた日。台帳の「初記録」のいちばん早い日（途中から加わったシンガーは 4/26 など） */
@@ -339,18 +356,22 @@ export function buildRanking(channels: Channel[], catalog: Catalog, start: strin
     if (!endSnap || !first || first > end) return empty
     const baseSnap = snaps[first > base ? first : base]
     const n = endSnap.channels[name], p = baseSnap?.channels[name]
-    let likes = 0, likesDiff = 0, comments = 0, commentsDiff = 0
+    let likes: number | null = 0, likesDiff: number | null = 0, comments: number | null = 0, commentsDiff: number | null = 0
     for (const id of byTalent.get(name) ?? []) {
       const e = endSnap.v[id]
       if (!e) continue  // 終わりの日にまだ無い（後で公開された）動画・もう外れた動画
       const b = baseSnap?.v[id] ?? [0, 0, 0]
-      likes += e[1]; likesDiff += e[1] - b[1]
-      comments += e[2]; commentsDiff += e[2] - b[2]
+      // 取り直し待ち（null）の動画があれば、そのシンガーの合計・増えた数は分からない
+      const dl = sub(e[1], b[1]), dc = sub(e[2], b[2])
+      likes = likes === null || e[1] === null ? null : likes + e[1]
+      likesDiff = likesDiff === null || dl === null ? null : likesDiff + dl
+      comments = comments === null || e[2] === null ? null : comments + e[2]
+      commentsDiff = commentsDiff === null || dc === null ? null : commentsDiff + dc
     }
     return {
       talent: name, nodata: false,
-      subs: n?.登録者数 ?? 0, subsDiff: n && p ? n.登録者数 - p.登録者数 : null,
-      views: n?.総再生数 ?? 0, viewsDiff: n && p ? n.総再生数 - p.総再生数 : null,
+      subs: n ? n.登録者数 : null, subsDiff: n && p ? sub(n.登録者数, p.登録者数) : null,
+      views: n ? n.総再生数 : null, viewsDiff: n && p ? sub(n.総再生数, p.総再生数) : null,
       likes, likesDiff: baseSnap ? likesDiff : null,
       comments, commentsDiff: baseSnap ? commentsDiff : null,
     }
@@ -417,9 +438,10 @@ export async function buildVelocityCurves(name: string, catalog: Catalog, flags:
     const snaps = await loadDailies(datesBetween(from, to))
     const curve: { day: number; views: number }[] = []
     for (const [date, d] of Object.entries(snaps).sort(([a], [b]) => a.localeCompare(b))) {
-      if (!d.v[id]) continue
+      const views = d.v[id]?.[0]
+      if (views === undefined || views === null) continue   // 記録が無い日・取り直し待ちの日は点を打たない
       const day = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${c.公開日}T00:00:00Z`)) / 86400_000)
-      curve.push({ day, views: d.v[id][0] })
+      curve.push({ day, views })
     }
     if (curve.length >= 2) items.push({ vid_id: id, title: c.タイトル || id, 公開日: c.公開日, curve })
     if (items.length >= maxVideos) break
@@ -528,7 +550,7 @@ export function buildMilestoneForecast(catalog: Catalog, flags: Flags, input: Mi
     for (let h = from + 1; h <= to; h++) if (h > windowStart) buckets[h % 24] += inc / (to - from)
   }
   const state = new Map<string, number>()
-  for (const [id, x] of Object.entries(d1.v)) state.set(id, x[0])
+  for (const [id, x] of Object.entries(d1.v)) if (x[0] !== null) state.set(id, x[0])
   const timeOf = (at: string | null, date: string) => Date.parse(at ?? `${date}T00:00:00+09:00`)
   let before: Map<string, number> | null = null  // 24時間前の再生数
   let stateAt = timeOf(d1.at, d1.date), beforeAt = stateAt
@@ -549,10 +571,10 @@ export function buildMilestoneForecast(catalog: Catalog, flags: Flags, input: Mi
     step(f.v, f.hour, Date.parse(f.at))
   }
   if (before === null) { before = new Map(state); beforeAt = stateAt }
-  // 今日の0時は daily。前の日の値で埋めた動画（補完）は取った値ではないので重ねない
+  // 今日の0時は daily。前の日の値で埋めた動画（補完）と取り直し待ち（null）は取った値ではないので重ねない
   const filled = new Set(d0.補完 ?? [])
   const d0v: Record<string, number> = {}
-  if (!d0.全体補完) for (const [id, x] of Object.entries(d0.v)) if (!filled.has(id)) d0v[id] = x[0]
+  if (!d0.全体補完) for (const [id, x] of Object.entries(d0.v)) if (!filled.has(id) && x[0] !== null) d0v[id] = x[0]
   step(d0v, 24, timeOf(d0.at, d0.date))
   for (const f of today) step(f.v, 24 + f.hour, Date.parse(f.at))
   const span = (asOf - beforeAt) / HOUR_MS  // 24時間前の記録から今までの時間（ふつうは24）
@@ -576,7 +598,7 @@ export function buildMilestoneForecast(catalog: Catalog, flags: Flags, input: Mi
     const age = c.公開日 ? (base - Date.parse(`${c.公開日}T00:00:00Z`)) / 86400_000 : Infinity
     if (age <= DECAY_MAX_AGE_DAYS && d2) {
       const a = d0.v[id]?.[0], b = d1.v[id]?.[0], q = d2.v[id]?.[0]
-      if (a !== undefined && b !== undefined && q !== undefined && b - q > 0) r = Math.min(DECAY_MAX, Math.max(DECAY_MIN, (a - b) / (b - q)))
+      if (a != null && b != null && q != null && b - q > 0) r = Math.min(DECAY_MAX, Math.max(DECAY_MIN, (a - b) / (b - q)))
     }
     const milestone = nextMilestone(now)
     const hours = hoursToReach(milestone - now, perDay, r, share, nowHour)

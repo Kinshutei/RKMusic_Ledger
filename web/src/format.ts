@@ -11,8 +11,9 @@ export function fmtDiff(diff: number | null): string {
 }
 
 /** 増えた数と増えた率。「+1,234 (+0.5%)」。率は 増えた数 ÷ 始まりの値（旧サイトと同じ。小数1桁） */
-export function fmtDiffRate(diff: number | null, value: number): string {
+export function fmtDiffRate(diff: number | null, value: number | null): string {
   if (diff === null) return '—'
+  if (value === null) return fmtDiff(diff)
   const base = value - diff
   const rate = base > 0 ? Math.round(diff / base * 1000) / 10 : null
   return fmtDiff(diff) + (rate !== null ? ` (${rate >= 0 ? '+' : ''}${rate}%)` : '')
@@ -43,9 +44,9 @@ export interface Trend {
  * 差がその前の平均の ±10% 以内なら横ばい（両方0も横ばい）。記録が14日分に満たないときは、ある日数を半分ずつに分けて比べ、
  * 2日分未満なら出さない。daily は新しい順（[0] が今日の分）
  */
-export function trendOf(daily: (number | null)[]): Trend | null {
-  const n = daily.findIndex(v => v === null)
-  const vals = (n === -1 ? daily : daily.slice(0, n)) as number[]
+/** count は日付のある（増加を出せる）日の数。その中の null は取り直し待ちで分からない日なので、平均から外す */
+export function trendOf(daily: (number | null)[], count: number = daily.length): Trend | null {
+  const vals = daily.slice(0, count).filter((v): v is number => v !== null)
   const days = Math.min(7, Math.floor(vals.length / 2))
   if (days < 1) return null
   const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length

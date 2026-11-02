@@ -29,7 +29,9 @@ function StatTile({ label, s, children }: { label: string; s: Stat; children?: R
   return (
     <div className="stat">
       <span className="stat-label">{label}</span>
-      <span className="stat-value">{s.value.toLocaleString()}</span>
+      <span className="stat-value" title={s.value === null ? '取り直し中（正しい値が取れたら表示されます）' : undefined}>
+        {s.value === null ? '—' : s.value.toLocaleString()}
+      </span>
       {s.diff !== null && <span className="stat-diff" style={{ color: diffColor(s.diff) }}>{fmtDiff(s.diff)}</span>}
       {children}
     </div>
@@ -72,7 +74,7 @@ export default function SingerPage({ name }: { name: string }) {
   const searching = active !== 'Analytics' && query.trim() !== ''
   const q = norm(query.trim())
   const shown = active === 'Analytics' ? [] : searching ? byType[active].filter(v => norm(v.タイトル).includes(q)) : byType[active]
-  const sorted = [...shown].sort((a, b) => b[sortKey] - a[sortKey])
+  const sorted = [...shown].sort((a, b) => (b[sortKey] ?? -1) - (a[sortKey] ?? -1))   // 取り直し中（null）は後ろへ
 
   return (
     <>

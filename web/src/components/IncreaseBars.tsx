@@ -31,23 +31,23 @@ export default function IncreaseBars({ label, kind, daily, dates }: {
   dates: string[]
 }) {
   const [ref, { w, h }] = useSize()
-  // daily は新しい順。値のある日だけを古い順に並べ直す
-  const n = daily.findIndex(v => v === null)
-  const count = n === -1 ? daily.length : n
-  const vals = (daily.slice(0, count) as number[]).reverse()
+  // daily は新しい順。日付のある日（増加を出せる日）を古い順に並べ直す。その中の null は取り直し待ちで分からない日
+  const count = dates.length
+  const vals = daily.slice(0, count).reverse()
+  const known = vals.filter((v): v is number => v !== null)
   const days = dates.slice(0, count).reverse().map(d => String(parseInt(d.slice(8), 10)))
 
   // 減った日があるときは、棒の下に書く数字のぶん、日付を下げる
-  const hasNeg = vals.some(v => v < 0)
+  const hasNeg = known.some(v => v < 0)
   const PAD = { top: 18, right: 2, bottom: hasNeg ? 32 : 20, left: 2 }
   const plotH = Math.max(40, h - PAD.top - PAD.bottom)
   const slot = count ? Math.min(40, Math.floor((w - PAD.left - PAD.right) / count)) : 0
   const barW = Math.max(4, Math.min(28, slot - 6))
-  const { niceMin, niceMax } = niceScale(Math.min(0, ...vals), Math.max(0, ...vals))
+  const { niceMin, niceMax } = niceScale(Math.min(0, ...known), Math.max(0, ...known))
   const range = niceMax - niceMin || 1
   const sy = (v: number) => PAD.top + plotH - ((v - niceMin) / range) * plotH
   const zeroY = sy(0)
-  const trend = trendOf(daily)
+  const trend = trendOf(daily, count)
 
   return (
     <div className={`increase ${kind}`}>
@@ -60,6 +60,16 @@ export default function IncreaseBars({ label, kind, daily, dates }: {
           <svg width={PAD.left + PAD.right + count * slot} height={PAD.top + plotH + PAD.bottom}>
             <line x1={PAD.left} y1={zeroY} x2={PAD.left + count * slot} y2={zeroY} className="zero" />
             {vals.map((v, i) => {
+              const x0 = PAD.left + slot * i + (slot - barW) / 2
+              if (v === null) {
+                // 取り直し待ちで増加が分からない日。棒は描かず、日付の上に「—」
+                return (
+                  <g key={i}>
+                    <text x={x0 + barW / 2} y={zeroY - 4} textAnchor="middle" className="value"><title>{days[i]}日: 取り直し中</title>—</text>
+                    <text x={x0 + barW / 2} y={PAD.top + plotH + PAD.bottom - 5} textAnchor="middle" className="day">{days[i]}</text>
+                  </g>
+                )
+              }
               const top = Math.min(sy(v), zeroY)
               const bh = Math.max(Math.abs(sy(v) - zeroY), 1)
               const x = PAD.left + slot * i + (slot - barW) / 2

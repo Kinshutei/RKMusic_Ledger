@@ -2,11 +2,11 @@ import { VideoCardData } from '../ledger'
 import { diffColor, fmtDiff, postedLines } from '../format'
 import IncreaseBars from './IncreaseBars'
 
-function Metric({ label, value, diff }: { label: string; value: number; diff: number | null }) {
+function Metric({ label, value, diff }: { label: string; value: number | null; diff: number | null }) {
   return (
     <span className="metric">
       <span className="metric-label">{label}</span>
-      <strong>{value.toLocaleString()}</strong>
+      <strong title={value === null ? '取り直し中（正しい値が取れたら表示されます）' : undefined}>{value === null ? '—' : value.toLocaleString()}</strong>
       {diff !== null && <span className="stat-diff" style={{ color: diffColor(diff) }}>{fmtDiff(diff)}</span>}
     </span>
   )
