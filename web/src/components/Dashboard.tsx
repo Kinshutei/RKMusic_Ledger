@@ -7,14 +7,16 @@ import { diffColor, fmtDiffRate } from '../format'
 import TrendChart from './TrendChart'
 import Milestones from './Milestones'
 
-// グループの分け方（旧サイトのツリーマップと同じ）
+// グループの分け方
 const GROUPS: { label: string; members: string[] }[] = [
   { label: 'LIVE UNION', members: ['焔魔るり', 'HACHI', '瀬戸乃とと', '水瀬凪'] },
   { label: 'KMN LABEL', members: ['KMNZ', 'HONK THE HORN'] },
   { label: 'VB+NJ', members: ['VESPERBELL', 'NUROJUNK'] },
-  { label: 'Fused', members: ['CULUA', 'CONA', '妃玖', 'Diα'] },
+  { label: 'Fused', members: ['妃玖', 'Diα'] },
+  { label: 'CIXY', members: ['CONA', 'IMI', 'XIDEN', 'ヨノ'] },
+  { label: 'MELUNE', members: ['MEDA', 'CULUA', 'NEUN'] },
   { label: 'GRAY MYTH', members: ['MEMESIA', 'LEWNE', '羽緒', 'Cil', '深影'] },
-  { label: 'その他', members: ['NEUN', 'MEDA', 'IMI', 'XIDEN', 'ヨノ', 'wouca'] },
+  { label: 'その他', members: ['wouca'] },
 ]
 
 type Metric = { key: 'subs' | 'views' | 'likes' | 'comments'; diff: 'subsDiff' | 'viewsDiff' | 'likesDiff' | 'commentsDiff'; label: string }
