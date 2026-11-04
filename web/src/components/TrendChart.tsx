@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react'
-import { Totals, VideoType, VIDEO_TYPES, loadTotals } from '../ledger'
+import { Totals, VideoType, VIDEO_TYPES, loadTalentTotals, loadTotals, sumTalentTotals } from '../ledger'
 import { fmtViews, niceScale } from '../format'
 
 export const TYPE_LABEL: Record<VideoType, string> = { Movie: '動画', Short: 'ショート', LiveArchive: 'ライブ' }
@@ -88,10 +88,13 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod,
   const len = idx.length
   if (len < 2) return <section className="panel"><div className="panel-head"><h2>{title}</h2></div><p className="muted">記録がたまると表示されます</p></section>
   const total = idx.reduce((s, i) => s + (series.sum[i] ?? 0), 0)
+  const knownDays = idx.filter(i => series.sum[i] !== null).length   // 取り直し待ちで分からない日を除いた日数
   const prevFrom = from - len
   const prevTotal = prevFrom >= start ? Array.from({ length: len }, (_, k) => series.sum[prevFrom + k] ?? 0).reduce((a, b) => a + b, 0) : null
   const change = prevTotal ? (total - prevTotal) / prevTotal * 100 : null
-  const lastTotal = [...data.total].reverse().find((v): v is number => v !== null) ?? 0
+  // 総数は分かっている最後の日の値（取り直し待ちの日は飛ばす）
+  const lastAt = data.total.reduce<number>((found, v, i) => (v !== null ? i : found), -1)
+  const lastTotal = lastAt >= 0 ? data.total[lastAt] ?? 0 : 0
 
   // 描画
   const H = w < 640 ? 240 : 320
@@ -101,10 +104,30 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod,
   const { ticks, niceMax } = niceScale(0, maxV, 5)
   const x = (k: number) => PAD.left + (len <= 1 ? 0 : (k / (len - 1)) * plotW)
   const y = (v: number) => PAD.top + plotH - (v / niceMax) * plotH
-  const linePath = (vals: (number | null)[]) => vals.map((v, k) => `${k === 0 ? 'M' : 'L'}${x(k).toFixed(1)},${y(v ?? 0).toFixed(1)}`).join('')
-  const areaPath = (top: number[], bottom: number[]) =>
-    `${top.map((v, k) => `${k === 0 ? 'M' : 'L'}${x(k).toFixed(1)},${y(v).toFixed(1)}`).join('')}` +
-    `${bottom.map((_, k) => bottom.length - 1 - k).map(k => `L${x(k).toFixed(1)},${y(bottom[k]).toFixed(1)}`).join('')}Z`
+  // 取り直し待ちで分からない日（null）は線も面も描かず、そこで切る
+  const linePath = (vals: (number | null)[]) => {
+    let out = '', pen = false
+    vals.forEach((v, k) => {
+      if (v === null) { pen = false; return }
+      out += `${pen ? 'L' : 'M'}${x(k).toFixed(1)},${y(v).toFixed(1)}`
+      pen = true
+    })
+    return out
+  }
+  const known = idx.map(i => series.sum[i] !== null)
+  const areaPath = (top: number[], bottom: number[]) => {
+    let out = ''
+    for (let a = 0; a < len; a++) {
+      if (!known[a]) continue
+      let b = a
+      while (b + 1 < len && known[b + 1]) b++
+      for (let k = a; k <= b; k++) out += `${k === a ? 'M' : 'L'}${x(k).toFixed(1)},${y(top[k]).toFixed(1)}`
+      for (let k = b; k >= a; k--) out += `L${x(k).toFixed(1)},${y(bottom[k]).toFixed(1)}`
+      out += 'Z'
+      a = b
+    }
+    return out
+  }
 
   const sums = idx.map(i => series.sum[i] ?? 0)
   const zeros = sums.map(() => 0)
@@ -145,10 +168,10 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod,
 
       <div className="kpis">
         <div className="kpi"><span>期間の増加</span><strong>+{total.toLocaleString()}</strong><small>{md(data.dates[from])}〜{md(data.dates[n - 1])}・{len}日</small></div>
-        <div className="kpi"><span>1日平均</span><strong>+{Math.round(total / len).toLocaleString()}</strong></div>
+        <div className="kpi"><span>1日平均</span><strong>+{Math.round(total / Math.max(knownDays, 1)).toLocaleString()}</strong></div>
         <div className="kpi"><span>前の{len}日と比べて</span>
           <strong className={change === null ? '' : change >= 0 ? 'up' : 'down'}>{change === null ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`}</strong></div>
-        <div className="kpi"><span>{totalLabel}</span><strong>{lastTotal.toLocaleString()}</strong><small>{md(data.dates[n - 1])} 時点</small></div>
+        <div className="kpi"><span>{totalLabel}</span><strong>{lastTotal.toLocaleString()}</strong><small>{md(data.dates[lastAt >= 0 ? lastAt : n - 1])} 時点</small></div>
       </div>
 
       <div ref={ref} className="plot">
@@ -174,7 +197,7 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod,
           {view === 'type' ? stacks.map(s => <path key={s.t} d={areaPath(s.top, s.bottom)} fill={TYPE_COLOR[s.t]} opacity={.85} />) : (
             <>
               <path d={areaPath(sums, zeros)} fill={`url(#${gradId})`} />
-              <path d={linePath(sums)} className="daily-line" style={single ? { stroke: color } : undefined} />
+              <path d={linePath(idx.map(i => series.sum[i]))} className="daily-line" style={single ? { stroke: color } : undefined} />
             </>
           )}
           <path d={linePath(idx.map(i => series.ma[i]))} className="ma-line" />
@@ -182,14 +205,14 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod,
             <g>
               <line x1={x(hk)} x2={x(hk)} y1={PAD.top} y2={PAD.top + plotH} className="cross" />
               <circle cx={x(hk)} cy={y(series.ma[hi] ?? 0)} r={4} className="ma-dot" />
-              {view !== 'type' && <circle cx={x(hk)} cy={y(series.sum[hi] ?? 0)} r={4} className="daily-dot" style={single ? { fill: color } : undefined} />}
+              {view !== 'type' && series.sum[hi] !== null && <circle cx={x(hk)} cy={y(series.sum[hi] ?? 0)} r={4} className="daily-dot" style={single ? { fill: color } : undefined} />}
             </g>
           )}
         </svg>
         {hk !== null && hi !== null && (
           <div className={`plot-tip${x(hk) > w * .6 ? ' left' : ''}`} style={{ left: x(hk) }}>
             <div className="tip-date">{md(data.dates[hi])}（{wd(data.dates[hi])}）</div>
-            <div className="tip-row"><span>{single && <i style={{ background: color }} />}{single ? `${TYPE_LABEL[single]}の増加` : '増加'}</span><strong>+{(series.sum[hi] ?? 0).toLocaleString()}</strong></div>
+            <div className="tip-row"><span>{single && <i style={{ background: color }} />}{single ? `${TYPE_LABEL[single]}の増加` : '増加'}</span><strong>{series.sum[hi] === null ? '取り直し中' : `+${series.sum[hi]!.toLocaleString()}`}</strong></div>
             <div className="tip-row"><span>7日平均</span><strong>+{Math.round(series.ma[hi] ?? 0).toLocaleString()}</strong></div>
             {view === 'type' && VIDEO_TYPES.map(t => (
               <div key={t} className="tip-row"><span><i style={{ background: TYPE_COLOR[t] }} />{TYPE_LABEL[t]}</span><strong>+{(data.inc[t][hi] ?? 0).toLocaleString()}</strong></div>
@@ -210,23 +233,42 @@ export function TrendPanel({ title, totalLabel, data, periods, period, onPeriod,
   )
 }
 
-/** Dashboard の「RK全体の再生数」と、その下の「RK全体の高評価数」。期間は2つで連動、表示の切り替えはグラフごと */
-export default function TrendChart() {
-  const [data, setData] = useState<Totals | null>(null)
+/**
+ * Dashboard の再生数と、その下の高評価数のグラフ。期間は2つで連動、表示の切り替えはグラフごと。
+ * group が「すべて」（members なし）なら RK全体、グループならメンバーの合計（シンガーごとの集計を足す）。
+ * 切り替えの読み込み中は前のグラフを出しておく（表示の切り替えの選択を保つため）
+ */
+export default function TrendChart({ group, members }: { group: string; members?: string[] }) {
+  const [shown, setShown] = useState<{ name: string; data: Totals } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState(90)
   useEffect(() => {
-    loadTotals().then(d => (d ? setData(d) : setError('集計のファイルがまだありません'))).catch(e => setError(String(e.message ?? e)))
-  }, [])
+    let alive = true
+    setError(null)
+    const load: Promise<Totals | null> = members
+      ? Promise.all(members.map(loadTalentTotals)).then(list => {
+          const found = list.filter((t): t is NonNullable<typeof t> => t !== null)
+          return found.length ? sumTalentTotals(found) : null
+        })
+      : loadTotals()
+    load.then(d => {
+      if (!alive) return
+      if (d) setShown({ name: members ? group : 'RK全体', data: d })
+      else setError('集計のファイルがまだありません')
+    }).catch(e => alive && setError(String(e.message ?? e)))
+    return () => { alive = false }
+  }, [group, members])
+  const data = shown?.data
   const likes = useMemo<TrendData | null>(() => (data?.likes ? { dates: data.dates, total: data.likes.total, inc: data.likes.inc } : null), [data])
   if (error) return <p className="muted">{error}</p>
-  if (!data) return <p className="muted loading">読み込み中…</p>
+  if (!shown || !data) return <p className="muted loading">読み込み中…</p>
+  const { name } = shown
   return (
     <div className="trend-stack">
-      <TrendPanel title="RK全体の再生数" totalLabel="RK全体の総再生数" data={data} periods={[30, 90, 0]} period={period} onPeriod={setPeriod} typeButtons />
+      <TrendPanel title={`${name}の再生数`} totalLabel={`${name}の総再生数`} data={data} periods={[30, 90, 0]} period={period} onPeriod={setPeriod} typeButtons />
       {likes
-        ? <TrendPanel title="RK全体の高評価数" totalLabel="RK全体の総高評価数" data={likes} periods={[30, 90, 0]} period={period} onPeriod={setPeriod} typeButtons />
-        : <section className="panel"><div className="panel-head"><h2>RK全体の高評価数</h2></div><p className="muted">集計のファイルにまだ高評価がありません</p></section>}
+        ? <TrendPanel title={`${name}の高評価数`} totalLabel={`${name}の総高評価数`} data={likes} periods={[30, 90, 0]} period={period} onPeriod={setPeriod} typeButtons />
+        : <section className="panel"><div className="panel-head"><h2>{name}の高評価数</h2></div><p className="muted">集計のファイルにまだ高評価がありません</p></section>}
     </div>
   )
 }

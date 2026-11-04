@@ -93,18 +93,66 @@ export const loadFlags = () => cached(fileCache, 'flags', () => fetchJson<Flags>
  * likes は高評価数の同じもの（total はその日の全動画の高評価数の合計）
  */
 export interface Totals {
-  dates: string[]; total: number[]; inc: Record<VideoType, (number | null)[]>
+  dates: string[]; total: (number | null)[]; inc: Record<VideoType, (number | null)[]>
   likes?: { total: (number | null)[]; inc: Record<VideoType, (number | null)[]> }
 }
 export const loadTotals = () => cached(fileCache, 'totals', () => fetchJson<Totals>('summary/daily_totals.json')) as Promise<Totals | null>
 
 /**
  * シンガーごとの日ごとの合計（summary/talents/{名前}.json）。数え方は RK全体の合計と同じ。
- * total・subs はその日の総再生数・登録者数。記録を始める前の日は null。inc はその日か前の日に記録が無ければ null
+ * total・subs はその日の総再生数・登録者数。記録を始める前の日は null。inc はその日か前の日に記録が無ければ null。
+ * likes は高評価数の同じもの。取り直し待ちがある日はどれも null
  */
-export interface TalentTotals { dates: string[]; total: (number | null)[]; subs: (number | null)[]; inc: Record<VideoType, (number | null)[]> }
+export interface TalentTotals {
+  dates: string[]; total: (number | null)[]; subs: (number | null)[]; inc: Record<VideoType, (number | null)[]>
+  likes?: { total: (number | null)[]; inc: Record<VideoType, (number | null)[]> }
+}
 export const loadTalentTotals = (name: string) => cached(fileCache, `talent:${name}`,
   () => fetchJson<TalentTotals>(`summary/talents/${encodeURIComponent(name)}.json`)) as Promise<TalentTotals | null>
+
+/**
+ * 1人ぶんの値の並びを足し込む。そのシンガーの最初の値より前の日（記録を始める前）は0として足す。
+ * 最初の値より後の null は取り直し待ちで分からないので、その日の合計も null
+ */
+function addSeries(sum: (number | null)[], dates: string[], own: string[], vals: (number | null)[], first: number) {
+  const at = new Map(own.map((d, i) => [d, i]))
+  dates.forEach((d, i) => {
+    const j = at.get(d)
+    if (j === undefined || j < first) return
+    const v = vals[j]
+    sum[i] = v === null || sum[i] === null ? null : (sum[i] as number) + v
+  })
+}
+
+/**
+ * グループのメンバーの集計を足して、RK全体と同じ形にする。だれの記録も始まっていない日は null
+ */
+export function sumTalentTotals(list: TalentTotals[]): Totals {
+  const dates = [...new Set(list.flatMap(t => t.dates))].sort()
+  const blank = (): (number | null)[] => dates.map(() => 0)
+  // 種別ごとの値は同じ日にそろって null になるので、記録の始まりは動画（Movie）の並びで見る
+  const firstOf = (vals: (number | null)[]) => { const i = vals.findIndex(v => v !== null); return i < 0 ? Infinity : i }
+  const sumOf = (pick: (t: TalentTotals) => (number | null)[] | undefined, firstBy: (t: TalentTotals) => (number | null)[] | undefined) => {
+    const sum = blank()
+    const started = dates.map(() => false)
+    for (const t of list) {
+      const vals = pick(t), base = firstBy(t)
+      if (!vals || !base) continue
+      const first = firstOf(base)
+      addSeries(sum, dates, t.dates, vals, first)
+      if (first !== Infinity) dates.forEach((d, i) => { if (d >= t.dates[first]) started[i] = true })
+    }
+    return sum.map((v, i) => (started[i] ? v : null))
+  }
+  const incOf = (pick: (t: TalentTotals) => Record<VideoType, (number | null)[]> | undefined) =>
+    Object.fromEntries(VIDEO_TYPES.map(ty => [ty, sumOf(t => pick(t)?.[ty], t => pick(t)?.Movie)])) as Record<VideoType, (number | null)[]>
+  return {
+    dates,
+    total: sumOf(t => t.total, t => t.total),
+    inc: incOf(t => t.inc),
+    likes: { total: sumOf(t => t.likes?.total, t => t.likes?.total), inc: incOf(t => t.likes?.inc) },
+  }
+}
 
 const dailyCache = new Map<string, Promise<Daily | null>>()
 export const loadDaily = (date: string) =>

@@ -848,6 +848,15 @@ def fill_missing_days(prev, today):
     return made
 
 
+def like_base(vid, p, prev2):
+    """高評価の増加を数える基準の値。前の日の記録が乱れていた動画（高評価0・コメント0で、その前の日は高評価が0でない）は、その前の日の値"""
+    if p[1] == 0 and p[2] == 0 and prev2 is not None:
+        q = prev2['v'].get(vid)
+        if q is not None and q[1] is not None and q[1] > 0:
+            return q[1]
+    return p[1]
+
+
 def day_totals(data, prev, catalog, flags, prev2=None):
     """
     その日の RK 全体の合計。(全チャンネルの総再生数の合計, 種別ごとに増えた再生数, 全動画の高評価数の合計, 種別ごとに増えた高評価数)。
@@ -877,11 +886,7 @@ def day_totals(data, prev, catalog, flags, prev2=None):
             view_unknown = True
         elif x[0] > p[0]:
             inc[t] += x[0] - p[0]
-        base = p[1]
-        if p[1] == 0 and p[2] == 0 and prev2 is not None:
-            q = prev2['v'].get(vid)
-            if q is not None and q[1] is not None and q[1] > 0:
-                base = q[1]
+        base = like_base(vid, p, prev2)
         if x[1] is None or base is None:
             like_unknown = True
         elif x[1] > base:
@@ -893,32 +898,49 @@ def day_totals(data, prev, catalog, flags, prev2=None):
     return total, inc, likes, like_inc
 
 
-def talent_totals(data, prev, catalog, flags, names):
+def talent_totals(data, prev, catalog, flags, names, prev2=None):
     """
-    その日のシンガーごとの合計。{名前: (総再生数, 登録者数, 種別ごとに増えた再生数)}。数え方は day_totals と同じ。
-    その日に記録が無いシンガーは総再生数・登録者数が None。その日か前の日に記録が無ければ、増えた再生数は None
+    その日のシンガーごとの合計。{名前: (総再生数, 登録者数, 種別ごとに増えた再生数, 高評価数の合計, 種別ごとに増えた高評価数)}。数え方は day_totals と同じ。
+    その日に記録が無いシンガーは総再生数・登録者数・高評価数が None。その日か前の日に記録が無ければ、増えた数は None
     """
     inc = {name: {t: 0 for t in TYPES} for name in names}
-    unknown = set()   # 取り直し待ち（null）の動画があり、増えた数が分からないシンガー
-    if prev is not None:
-        for vid, x in data['v'].items():
-            p = prev['v'].get(vid)
-            c = catalog['videos'].get(vid)
-            if p is None or c is None or c['タレント'] not in inc:
-                continue
-            t = flags.get(c['タレント'], {}).get(vid, c['type'])
-            if t not in TYPES:
-                continue
-            if x[0] is None or p[0] is None:
-                unknown.add(c['タレント'])
-            elif x[0] > p[0]:
-                inc[c['タレント']][t] += x[0] - p[0]
+    like_inc = {name: {t: 0 for t in TYPES} for name in names}
+    likes = {name: 0 for name in names}
+    # 取り直し待ち（null）の動画があり、分からないシンガー
+    view_unknown, like_inc_unknown, likes_unknown = set(), set(), set()
+    for vid, x in data['v'].items():
+        c = catalog['videos'].get(vid)
+        if c is None or c['タレント'] not in inc:
+            continue
+        name = c['タレント']
+        if x[1] is None:
+            likes_unknown.add(name)
+        else:
+            likes[name] += x[1]
+        p = prev['v'].get(vid) if prev is not None else None
+        if p is None:
+            continue
+        t = flags.get(name, {}).get(vid, c['type'])
+        if t not in TYPES:
+            continue
+        if x[0] is None or p[0] is None:
+            view_unknown.add(name)
+        elif x[0] > p[0]:
+            inc[name][t] += x[0] - p[0]
+        base = like_base(vid, p, prev2)
+        if x[1] is None or base is None:
+            like_inc_unknown.add(name)
+        elif x[1] > base:
+            like_inc[name][t] += x[1] - base
     out = {}
     for name in names:
         ch = data['channels'].get(name)
-        ok = prev is not None and ch is not None and name in prev['channels'] and name not in unknown
+        ok = prev is not None and ch is not None and name in prev['channels']
+        none = {t: None for t in TYPES}
         out[name] = (ch.get('総再生数') if ch else None, ch.get('登録者数') if ch else None,
-                     inc[name] if ok else {t: None for t in TYPES})
+                     inc[name] if ok and name not in view_unknown else none,
+                     likes[name] if ch is not None and name not in likes_unknown else None,
+                     like_inc[name] if ok and name not in like_inc_unknown else none)
     return out
 
 
@@ -935,7 +957,7 @@ def update_totals(days, catalog, flags, channels):
         if data:
             prev = read_json(daily_path(shift_day(d, -1)))
             prev2 = read_json(daily_path(shift_day(d, -2)))
-            computed[d] = (day_totals(data, prev, catalog, flags, prev2), talent_totals(data, prev, catalog, flags, names))
+            computed[d] = (day_totals(data, prev, catalog, flags, prev2), talent_totals(data, prev, catalog, flags, names, prev2))
 
     totals = read_json(TOTALS_FILE, None)
     if not totals:
@@ -955,12 +977,16 @@ def update_totals(days, catalog, flags, channels):
     for name in names:
         rel = f'{TALENTS_DIR}/{name}.json'
         cur = read_json(rel, None) or {'dates': [], 'total': [], 'subs': [], 'inc': {t: [] for t in TYPES}}
-        rows = {d: (cur['total'][i], cur['subs'][i], {t: cur['inc'][t][i] for t in TYPES}) for i, d in enumerate(cur['dates'])}
+        m = len(cur['dates'])
+        cur_likes = cur.get('likes') or {'total': [None] * m, 'inc': {t: [None] * m for t in TYPES}}
+        rows = {d: (cur['total'][i], cur['subs'][i], {t: cur['inc'][t][i] for t in TYPES},
+                    cur_likes['total'][i], {t: cur_likes['inc'][t][i] for t in TYPES}) for i, d in enumerate(cur['dates'])}
         for d, (_, per) in computed.items():
             rows[d] = per[name]
         dates = sorted(rows)
         write_json(rel, {'dates': dates, 'total': [rows[d][0] for d in dates], 'subs': [rows[d][1] for d in dates],
-                         'inc': {t: [rows[d][2][t] for d in dates] for t in TYPES}})
+                         'inc': {t: [rows[d][2][t] for d in dates] for t in TYPES},
+                         'likes': {'total': [rows[d][3] for d in dates], 'inc': {t: [rows[d][4][t] for d in dates] for t in TYPES}}})
 
 
 def run_daily(now, fill=False):

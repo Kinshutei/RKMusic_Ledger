@@ -181,7 +181,7 @@ export default function Dashboard() {
         </div>
       )}
       <hr className="dash-rule" />
-      <TrendChart />
+      <TrendChart group={group} members={GROUPS.find(g => g.label === group)?.members} />
       <hr className="dash-rule" />
       <Milestones />
     </div>
