@@ -422,6 +422,18 @@ def is_suspect(value, last):
     return value is None or (value == 0 and last is not None and last > 0)
 
 
+def suspect_items(stats, last):
+    """
+    [再生数, 高評価数, コメント数] のうち、取り直す項目の番号の並び。
+    コメント数だけが0で、高評価数が疑わしくないときは、本物の0として取り直さない
+    （これまでの一時的な0はどれも高評価数も0になっていた。一方、コメントが消えて本当に0になった動画が 2026-11-03 に出た）
+    """
+    bad = [j for j in range(3) if is_suspect(stats[j], last[j])]
+    if 2 in bad and stats[2] is not None and 1 not in bad:
+        bad.remove(2)
+    return bad
+
+
 def collect_channel(channel, uploads, catalog_videos, flags, last_good):
     """
     1チャンネルの全動画を取って種別を判定する（スレッドから呼ぶ）。
@@ -480,8 +492,7 @@ def collect_channel(channel, uploads, catalog_videos, flags, last_good):
 
     # 最後に正しく取れた値が0以外なのに0で返ってきた項目は、5秒後に1回だけ取り直す。それでも0なら daily では取り直し待ちになる
     def suspects(vid, stats):
-        last = last_good.get(vid) or [None, None, None]
-        return [j for j in range(3) if is_suspect(stats[j], last[j])]
+        return suspect_items(stats, last_good.get(vid) or [None, None, None])
     glitch_ids = [vid for vid, v in videos.items() if suspects(vid, v['stats'])]
     if glitch_ids:
         print(f'  ⚠️  [{name}] 0で返ってきた項目がある動画: {len(glitch_ids)}本。5秒後に取り直します')
@@ -491,8 +502,9 @@ def collect_channel(channel, uploads, catalog_videos, flags, last_good):
         for vid, item in retried.items():
             again = stats_of(item)
             bad = suspects(vid, videos[vid]['stats'])
+            still = suspects(vid, again)
             for j in bad:
-                if not is_suspect(again[j], (last_good.get(vid) or [None] * 3)[j]):
+                if j not in still:
                     videos[vid]['stats'][j] = again[j]
             if not suspects(vid, videos[vid]['stats']):
                 fixed_count += 1
@@ -663,9 +675,10 @@ def assemble_channel(daily, name, result, item, last_videos, last_channels, cata
     """
     def put(vid, stats):
         last = last_videos.get(vid) or [None, None, None]
+        bad = suspect_items(stats, last)
         row = []
         for j, value in enumerate(stats):
-            if is_suspect(value, last[j]):
+            if j in bad:
                 row.append(None)
                 pending_today['videos'].setdefault(vid, {})[str(j)] = last[j]
             else:
@@ -752,8 +765,10 @@ def resolve_pending(pending, now, video_stats, channel_stats, catalog):
                 continue
             if got is None:
                 continue
+            # 取り直し待ちの項目は控えた値、そうでない項目はその日の記録の値と比べる
+            bad = suspect_items(got, [items.get(str(j), d['v'][vid][j]) for j in range(3)])
             for j in list(items):
-                if is_suspect(got[int(j)], items[j]):
+                if int(j) in bad:
                     continue
                 d['v'][vid][int(j)] = got[int(j)]
                 d.setdefault(RESOLVED_MARK, {}).setdefault('videos', {}).setdefault(vid, {})[j] = at
